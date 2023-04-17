@@ -1,10 +1,9 @@
-use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
-use cairo_felt::Felt;
+use cairo_felt::Felt252;
 use cairo_lang_compiler::db::RootDatabase;
 use cairo_lang_compiler::diagnostics::DiagnosticsReporter;
 use cairo_lang_compiler::project::setup_project;
@@ -13,27 +12,24 @@ use cairo_lang_defs::ids::{FreeFunctionId, FunctionWithBodyId, ModuleItemId};
 use cairo_lang_defs::plugin::PluginDiagnostic;
 use cairo_lang_diagnostics::ToOption;
 use cairo_lang_filesystem::ids::CrateId;
-use cairo_lang_plugins::config::ConfigPlugin;
-use cairo_lang_plugins::derive::DerivePlugin;
-use cairo_lang_plugins::panicable::PanicablePlugin;
+use cairo_lang_lowering::ids::ConcreteFunctionWithBodyId;
+use cairo_lang_plugins::get_default_plugins;
 use cairo_lang_semantic::db::SemanticGroup;
-use cairo_lang_semantic::items::attribute::Attribute;
 use cairo_lang_semantic::items::functions::GenericFunctionId;
-use cairo_lang_semantic::literals::LiteralLongId;
-use cairo_lang_semantic::plugin::SemanticPlugin;
-use cairo_lang_semantic::{ConcreteFunction, ConcreteFunctionWithBodyId, FunctionLongId};
+use cairo_lang_semantic::{ConcreteFunction, FunctionLongId};
 use cairo_lang_sierra::extensions::enm::EnumType;
 use cairo_lang_sierra::extensions::NamedType;
 use cairo_lang_sierra::program::{GenericArg, Program};
 use cairo_lang_sierra_generator::db::SierraGenGroup;
 use cairo_lang_sierra_generator::replace_ids::replace_sierra_ids_in_program;
 use cairo_lang_starknet::plugin::StarkNetPlugin;
+use cairo_lang_syntax::attribute::structured::{Attribute, AttributeArg, AttributeArgVariant};
 use cairo_lang_syntax::node::db::SyntaxGroup;
 use cairo_lang_syntax::node::{ast, Terminal, Token, TypedSyntaxNode};
 use cairo_lang_utils::OptionHelper;
+use dojo_lang::plugin::DojoPlugin;
 use itertools::Itertools;
 use unescaper::unescape;
-use dojo_lang::plugin::DojoPlugin;
 
 use crate::casm_generator::{SierraCasmGenerator, TestConfig as TestConfigInternal};
 
@@ -42,7 +38,7 @@ pub enum PanicExpectation {
     /// Accept any panic value.
     Any,
     /// Accept only this specific vector of panics.
-    Exact(Vec<Felt>),
+    Exact(Vec<Felt252>),
 }
 
 /// Expectation for a result of a test.
@@ -125,7 +121,11 @@ pub fn try_extract_test_config(
         false
     };
     let available_gas = if let Some(attr) = available_gas_attr {
-        if let [ast::Expr::Literal(literal)] = &attr.args[..] {
+        if let AttributeArg {
+            variant: AttributeArgVariant::Unnamed { value: ast::Expr::Literal(literal), .. },
+            ..
+        } = attr.args[0]
+        {
             literal.token(db).text(db).parse::<usize>().ok()
         } else {
             diagnostics.push(PluginDiagnostic {
@@ -179,8 +179,14 @@ pub fn try_extract_test_config(
 }
 
 /// Tries to extract the relevant expected panic values.
-fn extract_panic_values(db: &dyn SyntaxGroup, attr: &Attribute) -> Option<Vec<Felt>> {
-    let [ast::Expr::Binary(binary)] = &attr.args[..] else { return None; };
+fn extract_panic_values(db: &dyn SyntaxGroup, attr: &Attribute) -> Option<Vec<Felt252>> {
+    let AttributeArg {
+        variant: AttributeArgVariant::Unnamed { value: ast::Expr::Binary(binary), .. },
+        ..
+    } = attr.args[0] else {
+        return None;
+    };
+
     if !matches!(binary.op(db), ast::BinaryOperator::Eq(_)) {
         return None;
     }
@@ -194,13 +200,13 @@ fn extract_panic_values(db: &dyn SyntaxGroup, attr: &Attribute) -> Option<Vec<Fe
         .into_iter()
         .map(|value| match value {
             ast::Expr::Literal(literal) => {
-                Felt::try_from(LiteralLongId::try_from(literal.token(db).text(db)).ok()?.value).ok()
+                Felt252::try_from(literal.numeric_value(db).unwrap_or_default()).ok()
             }
             ast::Expr::ShortString(short_string_syntax) => {
                 let text = short_string_syntax.text(db);
                 let (literal, _) = text[1..].rsplit_once('\'')?;
                 let unescaped_literal = unescape(literal).ok()?;
-                Some(Felt::from_bytes_be(unescaped_literal.as_bytes()))
+                Some(Felt252::from_bytes_be(unescaped_literal.as_bytes()))
             }
             _ => None,
         })
@@ -214,14 +220,10 @@ pub fn collect_tests(
     maybe_cairo_paths: Option<Vec<&String>>,
     maybe_builtins: Option<Vec<&String>>,
 ) -> Result<(Option<String>, Vec<TestConfigInternal>)> {
+    let mut plugins = get_default_plugins();
     // code taken from crates/cairo-lang-test-runner/src/cli.rs
-    let plugins: Vec<Arc<dyn SemanticPlugin>> = vec![
-        Arc::new(DerivePlugin {}),
-        Arc::new(PanicablePlugin {}),
-        Arc::new(ConfigPlugin { configs: HashSet::from(["test".to_string()]) }),
-        Arc::new(DojoPlugin {}),
-        Arc::new(StarkNetPlugin {}),
-    ];
+    plugins.push(Arc::new(DojoPlugin::default()));
+    plugins.push(Arc::new(StarkNetPlugin::default()));
     let db = &mut RootDatabase::builder()
         .with_plugins(plugins)
         .detect_corelib()

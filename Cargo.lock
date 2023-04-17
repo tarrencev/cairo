@@ -940,6 +940,7 @@ dependencies = [
  "cairo-lang-defs 1.0.0-alpha.7",
  "cairo-lang-diagnostics 1.0.0-alpha.7",
  "cairo-lang-filesystem 1.0.0-alpha.7",
+ "cairo-lang-lowering 1.0.0-alpha.7",
  "cairo-lang-plugins 1.0.0-alpha.7",
  "cairo-lang-project 1.0.0-alpha.7",
  "cairo-lang-runner",
@@ -1523,7 +1524,7 @@ dependencies = [
 
 [[package]]
 name = "cairo_python_bindings"
-version = "1.0.0-alpha.2"
+version = "1.0.0-alpha.7"
 dependencies = [
  "anyhow",
  "cairo-felt",
