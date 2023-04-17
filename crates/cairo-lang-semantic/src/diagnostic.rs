@@ -23,7 +23,7 @@ use crate::db::SemanticGroup;
 use crate::expr::inference::InferenceError;
 use crate::items::imp::UninferredImpl;
 use crate::plugin::PluginMappedDiagnostic;
-use crate::resolve_path::ResolvedConcreteItem;
+use crate::resolve::ResolvedConcreteItem;
 use crate::{semantic, ConcreteTraitId, GenericArgumentId};
 
 pub struct SemanticDiagnostics {
@@ -225,7 +225,7 @@ impl DiagnosticEntry for SemanticDiagnostic {
                     function_id.name(defs_db),
                 )
             }
-            SemanticDiagnosticKind::ParamaterShouldBeReference {
+            SemanticDiagnosticKind::ParameterShouldBeReference {
                 impl_def_id,
                 impl_function_id,
                 trait_id,
@@ -356,6 +356,13 @@ impl DiagnosticEntry for SemanticDiagnostic {
                     block_else_ty.format(db),
                 )
             }
+            SemanticDiagnosticKind::IncompatibleLoopBreakTypes { current_ty, break_ty } => {
+                format!(
+                    r#"Loop has incompatible return types: "{}" and "{}""#,
+                    current_ty.format(db),
+                    break_ty.format(db),
+                )
+            }
             SemanticDiagnosticKind::TypeHasNoMembers { ty, member_name: _ } => {
                 format!(r#"Type "{}" has no members."#, ty.format(db))
             }
@@ -409,10 +416,6 @@ impl DiagnosticEntry for SemanticDiagnostic {
             SemanticDiagnosticKind::SuperUsedInRootModule => {
                 "'super' cannot be used for the crate's root module.".into()
             }
-            SemanticDiagnosticKind::UnexpectedLiteralPattern { ty } => format!(
-                r#"Unexpected type for literal pattern. Expected: felt252. Got: "{}""#,
-                ty.format(db),
-            ),
             SemanticDiagnosticKind::UnexpectedEnumPattern { ty } => {
                 format!(r#"Unexpected type for enum pattern. "{}" is not an enum."#, ty.format(db),)
             }
@@ -518,6 +521,19 @@ impl DiagnosticEntry for SemanticDiagnostic {
             SemanticDiagnosticKind::DesnapNonSnapshot => {
                 "Desnap operator can only be applied on snapshots".into()
             }
+            SemanticDiagnosticKind::NoImplementationOfIndexOperator(ty) => {
+                format!(
+                    r#"Type "{}" does not implement the "Index" trait nor the "IndexView" trait."#,
+                    ty.format(db)
+                )
+            }
+            SemanticDiagnosticKind::MultipleImplementationOfIndexOperator(ty) => {
+                format!(
+                    r#"Type "{}" implements both the "Index" trait and the "IndexView" trait."#,
+                    ty.format(db)
+                )
+            }
+
             SemanticDiagnosticKind::UnsupportedInlineArguments => {
                 "Unsupported `inline` arguments.".into()
             }
@@ -539,6 +555,15 @@ impl DiagnosticEntry for SemanticDiagnostic {
                 method_name,
                 ty.format(db)
             ),
+            SemanticDiagnosticKind::TailExpressionNotAllowedInLoop => {
+                "Tail expression not allow in a `loop` block.".into()
+            }
+            SemanticDiagnosticKind::BreakOnlyAllowedInsideALoop => {
+                "Break only allowed inside a `loop`.".into()
+            }
+            SemanticDiagnosticKind::ReturnNotAllowedInsideALoop => {
+                "`return` not allowed inside a `loop`.".into()
+            }
         }
     }
 
@@ -635,7 +660,7 @@ pub enum SemanticDiagnosticKind {
         trait_id: TraitId,
         function_id: TraitFunctionId,
     },
-    ParamaterShouldBeReference {
+    ParameterShouldBeReference {
         impl_def_id: ImplDefId,
         impl_function_id: ImplFunctionId,
         trait_id: TraitId,
@@ -699,6 +724,10 @@ pub enum SemanticDiagnosticKind {
         block_if_ty: semantic::TypeId,
         block_else_ty: semantic::TypeId,
     },
+    IncompatibleLoopBreakTypes {
+        current_ty: semantic::TypeId,
+        break_ty: semantic::TypeId,
+    },
     TypeHasNoMembers {
         ty: semantic::TypeId,
         member_name: SmolStr,
@@ -737,9 +766,6 @@ pub enum SemanticDiagnosticKind {
         previous_modifier: SmolStr,
     },
     ReferenceLocalVariable,
-    UnexpectedLiteralPattern {
-        ty: semantic::TypeId,
-    },
     UnexpectedEnumPattern {
         ty: semantic::TypeId,
     },
@@ -796,11 +822,16 @@ pub enum SemanticDiagnosticKind {
     TraitMismatch,
     DesnapNonSnapshot,
     InternalInferenceError(InferenceError),
+    NoImplementationOfIndexOperator(semantic::TypeId),
+    MultipleImplementationOfIndexOperator(semantic::TypeId),
     UnsupportedInlineArguments,
     RedundantInlineAttribute,
     InlineWithoutArgumentNotSupported,
     InlineAttrForExternFunctionNotAllowed,
     InlineAlwaysWithImplGenericArgNotAllowed,
+    TailExpressionNotAllowedInLoop,
+    BreakOnlyAllowedInsideALoop,
+    ReturnNotAllowedInsideALoop,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]

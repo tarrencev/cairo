@@ -22,7 +22,9 @@ use crate::extensions::felt252::{
 };
 use crate::extensions::felt252_dict::Felt252DictConcreteLibfunc;
 use crate::extensions::function_call::FunctionCallConcreteLibfunc;
-use crate::extensions::gas::GasConcreteLibfunc::{GetAvailableGas, RedepositGas, WithdrawGas};
+use crate::extensions::gas::GasConcreteLibfunc::{
+    BuiltinWithdrawGas, GetAvailableGas, GetBuiltinCosts, RedepositGas, WithdrawGas,
+};
 use crate::extensions::mem::MemConcreteLibfunc::{
     AllocLocal, FinalizeLocals, Rename, StoreLocal, StoreTemp,
 };
@@ -139,6 +141,9 @@ pub fn simulate<
                 0,
             ))
         }
+        Gas(BuiltinWithdrawGas(_) | GetBuiltinCosts(_)) => {
+            unimplemented!("Simulation of the builtin cost functionality is not implemented yet.")
+        }
         BranchAlign(_) => {
             get_statement_gas_info().ok_or(LibfuncSimulationError::UnresolvedStatementGasInfo)?;
             Ok((vec![], 0))
@@ -188,6 +193,28 @@ pub fn simulate<
             [_, _, _] => Err(LibfuncSimulationError::MemoryLayoutMismatch),
             _ => Err(LibfuncSimulationError::WrongNumberOfArgs),
         },
+        Array(ArrayConcreteLibfunc::Slice(_)) => match &inputs[..] {
+            [
+                CoreValue::RangeCheck,
+                CoreValue::Array(_),
+                CoreValue::Uint32(_),
+                CoreValue::Uint32(_),
+            ] => {
+                let mut iter = inputs.into_iter();
+                iter.next(); // Ignore range check.
+                let arr = extract_matches!(iter.next().unwrap(), CoreValue::Array);
+                let start = extract_matches!(iter.next().unwrap(), CoreValue::Uint32) as usize;
+                let length = extract_matches!(iter.next().unwrap(), CoreValue::Uint32) as usize;
+                match arr.get(start..(start + length)) {
+                    Some(elements) => {
+                        Ok((vec![CoreValue::RangeCheck, CoreValue::Array(elements.to_vec())], 0))
+                    }
+                    None => Ok((vec![CoreValue::RangeCheck], 1)),
+                }
+            }
+            [_, _, _] => Err(LibfuncSimulationError::MemoryLayoutMismatch),
+            _ => Err(LibfuncSimulationError::WrongNumberOfArgs),
+        },
         Array(ArrayConcreteLibfunc::Len(_)) => match &inputs[..] {
             [CoreValue::Array(_)] => {
                 let arr = extract_matches!(inputs.into_iter().next().unwrap(), CoreValue::Array);
@@ -198,6 +225,7 @@ pub fn simulate<
             _ => Err(LibfuncSimulationError::WrongNumberOfArgs),
         },
         Array(ArrayConcreteLibfunc::SnapshotPopFront(_)) => todo!(),
+        Array(ArrayConcreteLibfunc::SnapshotPopBack(_)) => todo!(),
         Uint8(libfunc) => simulate_u8_libfunc(libfunc, &inputs),
         Uint16(libfunc) => simulate_u16_libfunc(libfunc, &inputs),
         Uint32(libfunc) => simulate_u32_libfunc(libfunc, &inputs),
@@ -310,8 +338,8 @@ pub fn simulate<
         CoreConcreteLibfunc::Pedersen(_) => {
             unimplemented!("Simulation of the Pedersen hash function is not implemented yet.");
         }
-        CoreConcreteLibfunc::BuiltinCost(_) => {
-            unimplemented!("Simulation of the builtin cost functionality is not implemented yet.")
+        CoreConcreteLibfunc::Poseidon(_) => {
+            unimplemented!("Simulation of the Poseidon hash function is not implemented yet.");
         }
         CoreConcreteLibfunc::StarkNet(_) => {
             unimplemented!("Simulation of the StarkNet functionalities is not implemented yet.")
@@ -349,6 +377,7 @@ pub fn simulate<
             _ => Err(LibfuncSimulationError::WrongNumberOfArgs),
         },
         CoreConcreteLibfunc::Cast(_) => unimplemented!(),
+        CoreConcreteLibfunc::Uint256(_) => unimplemented!(),
     }
 }
 
@@ -911,7 +940,7 @@ fn simulate_felt252_libfunc(
                 Err(LibfuncSimulationError::WrongNumberOfArgs)
             }
         }
-        Felt252Concrete::BinaryOperation(Felt252BinaryOperationConcrete::Binary(
+        Felt252Concrete::BinaryOperation(Felt252BinaryOperationConcrete::WithVar(
             Felt252BinaryOpConcreteLibfunc { operator, .. },
         )) => match (inputs, operator) {
             (
@@ -941,7 +970,7 @@ fn simulate_felt252_libfunc(
             ([_, _], _) => Err(LibfuncSimulationError::MemoryLayoutMismatch),
             _ => Err(LibfuncSimulationError::WrongNumberOfArgs),
         },
-        Felt252Concrete::BinaryOperation(Felt252BinaryOperationConcrete::Const(
+        Felt252Concrete::BinaryOperation(Felt252BinaryOperationConcrete::WithConst(
             Felt252OperationWithConstConcreteLibfunc { operator, c, .. },
         )) => match inputs {
             [CoreValue::Felt252(value)] => Ok((

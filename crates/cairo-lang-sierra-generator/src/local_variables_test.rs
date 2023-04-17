@@ -4,7 +4,9 @@ use cairo_lang_lowering::db::LoweringGroup;
 use cairo_lang_semantic::test_utils::setup_test_function;
 use cairo_lang_utils::ordered_hash_map::OrderedHashMap;
 use itertools::Itertools;
+use lowering::ids::ConcreteFunctionWithBodyId;
 
+use super::AnalyzeApChangesResult;
 use crate::function_generator_test_utils::test_function_generator;
 use crate::test_utils::SierraGenDatabaseForTesting;
 
@@ -18,6 +20,7 @@ cairo_lang_test_utils::test_file_test!(
         match_enum: "match_enum",
         match_extern: "match_extern",
         simple: "simple",
+        snapshot: "snapshot",
         struct_: "struct",
     },
     check_find_local_variables
@@ -40,17 +43,21 @@ fn check_find_local_variables(
         .unwrap()
         .expect_with_db(db, "Unexpected diagnostics.");
 
-    let lowered_function =
-        &*db.concrete_function_with_body_lowered(test_function.concrete_function_id).unwrap();
+    let function_id =
+        ConcreteFunctionWithBodyId::from_semantic(db, test_function.concrete_function_id);
+    let lowered_function = &*db.concrete_function_with_body_lowered(function_id).unwrap();
 
     let lowered_formatter =
         lowering::fmt::LoweredFormatter { db, variables: &lowered_function.variables };
     let lowered_str = format!("{:?}", lowered_function.debug(&lowered_formatter));
 
-    let locals = super::find_local_variables(db, lowered_function).unwrap();
+    let AnalyzeApChangesResult { known_ap_change: _, local_variables } =
+        super::analyze_ap_changes(db, lowered_function).unwrap();
 
-    let local_variables_str =
-        locals.iter().map(|var_id| format!("{:?}", var_id.debug(&lowered_formatter))).join(", ");
+    let local_variables_str = local_variables
+        .iter()
+        .map(|var_id| format!("{:?}", var_id.debug(&lowered_formatter)))
+        .join(", ");
 
     OrderedHashMap::from([
         ("lowering_format".into(), lowered_str),

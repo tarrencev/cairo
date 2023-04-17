@@ -13,7 +13,7 @@ use super::imp::{ImplHead, ImplId};
 use crate::db::SemanticGroup;
 use crate::diagnostic::{NotFoundItemType, SemanticDiagnosticKind, SemanticDiagnostics};
 use crate::literals::LiteralId;
-use crate::resolve_path::{ResolvedConcreteItem, Resolver};
+use crate::resolve::{ResolvedConcreteItem, Resolver};
 use crate::types::TypeHead;
 use crate::{ConcreteTraitId, TypeId};
 
@@ -185,9 +185,6 @@ pub fn semantic_generic_params(
             .collect(),
     };
 
-    if let Some((stable_ptr, inference_err)) = resolver.inference.finalize() {
-        return Err(inference_err.report(diagnostics, stable_ptr));
-    }
     Ok(res)
 }
 

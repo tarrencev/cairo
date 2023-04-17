@@ -27,7 +27,7 @@ impl TestFileRunner for ExpandContractTestRunner {
         let file_id = self.db.module_main_file(test_module.module_id).unwrap();
         let syntax_file = self.db.file_syntax(file_id).unwrap();
 
-        let plugin = StarkNetPlugin {};
+        let plugin = StarkNetPlugin::default();
         let mut generated_items: Vec<String> = Vec::new();
 
         for item in syntax_file.items(&self.db).elements(&self.db).into_iter() {
@@ -62,6 +62,7 @@ cairo_lang_test_utils::test_file_test_with_runner!(
         hello_starknet: "hello_starknet",
         dispatcher: "dispatcher",
         user_defined_types: "user_defined_types",
+        l1_handler: "l1_handler",
     },
     ExpandContractTestRunner
 );

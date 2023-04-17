@@ -20,10 +20,7 @@ impl SyntaxNodeFormat for SyntaxNode {
             | SyntaxKind::TokenLBrack
             | SyntaxKind::TokenSingleLineComment => true,
             SyntaxKind::TokenLParen
-                if matches!(
-                    grandparent_kind(db, self),
-                    Some(SyntaxKind::FunctionSignature | SyntaxKind::AttributeArgs)
-                ) =>
+                if matches!(grandparent_kind(db, self), Some(SyntaxKind::FunctionSignature)) =>
             {
                 true
             }
@@ -67,6 +64,7 @@ impl SyntaxNodeFormat for SyntaxNode {
                             | SyntaxKind::ExprFunctionCall
                             | SyntaxKind::PatternEnum
                             | SyntaxKind::PatternStruct
+                            | SyntaxKind::Attribute
                     )
                 ) =>
             {
@@ -192,7 +190,6 @@ impl SyntaxNodeFormat for SyntaxNode {
                 | SyntaxKind::MemberList
                 | SyntaxKind::ArgList
                 | SyntaxKind::Arg
-                | SyntaxKind::AttributeArgList
                 | SyntaxKind::GenericArgList
                 | SyntaxKind::GenericParamList
                 | SyntaxKind::ArgListParenthesized
@@ -447,6 +444,22 @@ impl SyntaxNodeFormat for SyntaxNode {
                 },
                 _ => WrappingBreakLinePoints { leading: None, trailing: None },
             },
+        }
+    }
+
+    fn should_skip_terminal(&self, db: &dyn SyntaxGroup) -> bool {
+        if self.kind(db) == SyntaxKind::TerminalColonColon
+            && parent_kind(db, self) == Some(SyntaxKind::PathSegmentWithGenericArgs)
+        {
+            let path_node = self.parent().unwrap().parent().unwrap();
+            matches!(
+                parent_kind(db, &path_node),
+                Some(SyntaxKind::ItemImpl)
+                    | Some(SyntaxKind::GenericParamImpl)
+                    | Some(SyntaxKind::GenericArgExpr)
+            )
+        } else {
+            false
         }
     }
 }

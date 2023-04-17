@@ -3,11 +3,14 @@ use std::sync::Arc;
 use cairo_lang_defs::ids::{LanguageElementId, TypeAliasId};
 use cairo_lang_diagnostics::{Diagnostics, Maybe, ToMaybe};
 use cairo_lang_proc_macros::DebugWithDb;
+use cairo_lang_syntax::node::TypedSyntaxNode;
 
 use super::generics::semantic_generic_params;
 use crate::db::SemanticGroup;
-use crate::diagnostic::{SemanticDiagnosticKind, SemanticDiagnostics};
-use crate::resolve_path::{ResolvedLookback, Resolver};
+use crate::diagnostic::SemanticDiagnosticKind::*;
+use crate::diagnostic::SemanticDiagnostics;
+use crate::resolve::{ResolvedItems, Resolver};
+use crate::substitution::SemanticRewriter;
 use crate::types::resolve_type;
 use crate::{GenericParam, SemanticDiagnostic, TypeId};
 
@@ -17,7 +20,7 @@ pub struct TypeAliasData {
     diagnostics: Diagnostics<SemanticDiagnostic>,
     resolved_type: Maybe<TypeId>,
     generic_params: Vec<GenericParam>,
-    resolved_lookback: Arc<ResolvedLookback>,
+    resolved_lookback: Arc<ResolvedItems>,
 }
 impl TypeAliasData {
     /// Returns Maybe::Err if a cycle is detected here.
@@ -43,7 +46,7 @@ pub fn priv_type_alias_semantic_data(
     let module_type_aliases = db.module_type_aliases(module_file_id.0)?;
     let type_alias_ast = module_type_aliases.get(&type_alias_id).to_maybe()?;
     let syntax_db = db.upcast();
-    let mut resolver = Resolver::new_with_inference(db, module_file_id);
+    let mut resolver = Resolver::new(db, module_file_id);
     let generic_params = semantic_generic_params(
         db,
         &mut diagnostics,
@@ -52,7 +55,21 @@ pub fn priv_type_alias_semantic_data(
         &type_alias_ast.generic_params(syntax_db),
     )?;
     let ty = resolve_type(db, &mut diagnostics, &mut resolver, &type_alias_ast.ty(syntax_db));
-    let resolved_lookback = Arc::new(resolver.lookback);
+    let resolved_lookback = Arc::new(resolver.resolved_items);
+
+    // Check fully resolved.
+    if let Some((stable_ptr, inference_err)) = resolver.inference.finalize() {
+        inference_err.report(&mut diagnostics, stable_ptr);
+    }
+    let generic_params = resolver
+        .inference
+        .rewrite(generic_params)
+        .map_err(|err| err.report(&mut diagnostics, type_alias_ast.stable_ptr().untyped()))?;
+    let ty = resolver
+        .inference
+        .rewrite(ty)
+        .map_err(|err| err.report(&mut diagnostics, type_alias_ast.stable_ptr().untyped()))?;
+
     Ok(TypeAliasData {
         diagnostics: diagnostics.build(),
         resolved_type: Ok(ty),
@@ -72,10 +89,8 @@ pub fn priv_type_alias_semantic_data_cycle(
     let module_type_aliases = db.module_type_aliases(module_file_id.0)?;
     let type_alias_ast = module_type_aliases.get(type_alias_id).to_maybe()?;
     let syntax_db = db.upcast();
-    let err =
-        Err(diagnostics
-            .report(&type_alias_ast.name(syntax_db), SemanticDiagnosticKind::TypeAliasCycle));
-    let mut resolver = Resolver::new_with_inference(db, module_file_id);
+    let err = Err(diagnostics.report(&type_alias_ast.name(syntax_db), TypeAliasCycle));
+    let mut resolver = Resolver::new(db, module_file_id);
     let generic_params = semantic_generic_params(
         db,
         &mut diagnostics,
@@ -87,7 +102,7 @@ pub fn priv_type_alias_semantic_data_cycle(
         diagnostics: diagnostics.build(),
         resolved_type: err,
         generic_params,
-        resolved_lookback: Arc::new(ResolvedLookback::default()),
+        resolved_lookback: Arc::new(ResolvedItems::default()),
     })
 }
 
@@ -119,6 +134,6 @@ pub fn type_alias_generic_params(
 pub fn type_alias_resolved_lookback(
     db: &dyn SemanticGroup,
     type_alias_id: TypeAliasId,
-) -> Maybe<Arc<ResolvedLookback>> {
+) -> Maybe<Arc<ResolvedItems>> {
     Ok(db.priv_type_alias_semantic_data(type_alias_id)?.resolved_lookback)
 }

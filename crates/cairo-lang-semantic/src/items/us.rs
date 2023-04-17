@@ -6,8 +6,9 @@ use cairo_lang_proc_macros::DebugWithDb;
 use cairo_lang_utils::Upcast;
 
 use crate::db::SemanticGroup;
-use crate::diagnostic::{NotFoundItemType, SemanticDiagnosticKind, SemanticDiagnostics};
-use crate::resolve_path::{ResolvedGenericItem, ResolvedLookback, Resolver};
+use crate::diagnostic::SemanticDiagnosticKind::*;
+use crate::diagnostic::{NotFoundItemType, SemanticDiagnostics};
+use crate::resolve::{ResolvedGenericItem, ResolvedItems, Resolver};
 use crate::SemanticDiagnostic;
 
 #[derive(Clone, Debug, PartialEq, Eq, DebugWithDb)]
@@ -15,7 +16,7 @@ use crate::SemanticDiagnostic;
 pub struct UseData {
     diagnostics: Diagnostics<SemanticDiagnostic>,
     resolved_item: Maybe<ResolvedGenericItem>,
-    resolved_lookback: Arc<ResolvedLookback>,
+    resolved_lookback: Arc<ResolvedItems>,
 }
 
 /// Query implementation of [crate::db::SemanticGroup::priv_use_semantic_data].
@@ -23,7 +24,7 @@ pub fn priv_use_semantic_data(db: &(dyn SemanticGroup), use_id: UseId) -> Maybe<
     let module_file_id = use_id.module_file_id(db.upcast());
     let mut diagnostics = SemanticDiagnostics::new(module_file_id);
     // TODO(spapini): Add generic args when they are supported on structs.
-    let mut resolver = Resolver::new_without_inference(db, module_file_id);
+    let mut resolver = Resolver::new(db, module_file_id);
     // TODO(spapini): when code changes in a file, all the AST items change (as they contain a path
     // to the green root that changes. Once ASTs are rooted on items, use a selector that picks only
     // the item instead of all the module data.
@@ -35,7 +36,8 @@ pub fn priv_use_semantic_data(db: &(dyn SemanticGroup), use_id: UseId) -> Maybe<
         &use_ast.name(syntax_db),
         NotFoundItemType::Identifier,
     );
-    let resolved_lookback = Arc::new(resolver.lookback);
+    let resolved_lookback = Arc::new(resolver.resolved_items);
+
     Ok(UseData { diagnostics: diagnostics.build(), resolved_item, resolved_lookback })
 }
 
@@ -54,15 +56,15 @@ pub fn priv_use_semantic_data_cycle(
         &use_ast.name(syntax_db),
         if cycle.len() == 1 {
             // `use bad_name`, finds itself but we don't want to report a cycle in that case.
-            SemanticDiagnosticKind::PathNotFound(NotFoundItemType::Identifier)
+            PathNotFound(NotFoundItemType::Identifier)
         } else {
-            SemanticDiagnosticKind::UseCycle
+            UseCycle
         },
     ));
     Ok(UseData {
         diagnostics: diagnostics.build(),
         resolved_item: err,
-        resolved_lookback: Arc::new(ResolvedLookback::default()),
+        resolved_lookback: Arc::new(ResolvedItems::default()),
     })
 }
 
@@ -75,10 +77,7 @@ pub fn use_semantic_diagnostics(
 }
 
 /// Query implementation of [crate::db::SemanticGroup::use_resolved_lookback].
-pub fn use_resolved_lookback(
-    db: &dyn SemanticGroup,
-    use_id: UseId,
-) -> Maybe<Arc<ResolvedLookback>> {
+pub fn use_resolved_lookback(db: &dyn SemanticGroup, use_id: UseId) -> Maybe<Arc<ResolvedItems>> {
     Ok(db.priv_use_semantic_data(use_id)?.resolved_lookback)
 }
 

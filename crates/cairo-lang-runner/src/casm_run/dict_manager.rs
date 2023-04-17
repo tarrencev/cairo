@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use cairo_felt::Felt as Felt252;
+use cairo_felt::Felt252;
 use cairo_vm::types::relocatable::Relocatable;
 use cairo_vm::vm::vm_core::VirtualMachine;
 
@@ -74,7 +74,7 @@ impl DictManagerExecScope {
     }
 }
 
-/// Helper object for the managment of dict_squash hints.
+/// Helper object for the management of dict_squash hints.
 #[derive(Default, Debug)]
 pub struct DictSquashExecScope {
     /// A map from key to the list of indices accessing it, each list in reverse order.

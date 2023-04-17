@@ -18,15 +18,14 @@ impl StarknetRootDatabaseBuilderEx for RootDatabaseBuilder {
             "RangeCheck",
             "Bitwise",
             "EcOp",
-            // TODO(lior): Uncomment the line below once Poseidon is supported.
-            //   "Poseidon",
+            "Poseidon",
             "SegmentArena",
             "GasBuiltin",
             "System",
         ];
 
         let mut plugins = get_default_plugins();
-        plugins.push(Arc::new(StarkNetPlugin {}));
+        plugins.push(Arc::new(StarkNetPlugin::default()));
 
         self.with_implicit_precedence(&precedence).with_plugins(plugins)
     }

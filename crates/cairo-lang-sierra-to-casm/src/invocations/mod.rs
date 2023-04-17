@@ -4,8 +4,8 @@ use cairo_lang_casm::builder::{CasmBuildResult, CasmBuilder, Var};
 use cairo_lang_casm::cell_expression::CellExpression;
 use cairo_lang_casm::instructions::Instruction;
 use cairo_lang_casm::operand::{CellRef, Register};
-use cairo_lang_sierra::extensions::builtin_cost::CostTokenType;
 use cairo_lang_sierra::extensions::core::CoreConcreteLibfunc;
+use cairo_lang_sierra::extensions::gas::CostTokenType;
 use cairo_lang_sierra::extensions::lib_func::{BranchSignature, OutputVarInfo, SierraApChange};
 use cairo_lang_sierra::extensions::{ConcreteLibfunc, OutputVarReferenceInfo};
 use cairo_lang_sierra::ids::ConcreteTypeId;
@@ -13,9 +13,8 @@ use cairo_lang_sierra::program::{BranchInfo, BranchTarget, Invocation, Statement
 use cairo_lang_sierra_ap_change::core_libfunc_ap_change::{
     core_libfunc_ap_change, InvocationApChangeInfoProvider,
 };
-use cairo_lang_sierra_gas::core_libfunc_cost::{
-    core_libfunc_cost, ConstCost, InvocationCostInfoProvider,
-};
+use cairo_lang_sierra_gas::core_libfunc_cost::{core_libfunc_cost, InvocationCostInfoProvider};
+use cairo_lang_sierra_gas::objects::ConstCost;
 use cairo_lang_utils::ordered_hash_map::OrderedHashMap;
 use itertools::{zip_eq, Itertools};
 use thiserror::Error;
@@ -35,7 +34,6 @@ mod array;
 mod bitwise;
 mod boolean;
 mod boxing;
-mod builtin_cost;
 mod casts;
 mod cheatcodes;
 mod debug;
@@ -49,11 +47,13 @@ mod mem;
 mod misc;
 mod nullable;
 mod pedersen;
+mod poseidon;
 mod starknet;
 
 mod structure;
 mod uint;
 mod uint128;
+mod uint256;
 
 #[cfg(test)]
 mod test_utils;
@@ -106,7 +106,7 @@ pub struct BranchChanges {
     pub ap_change: ApChange,
     /// A change to the ap tracking status.
     pub ap_tracking_change: ApTrackingChange,
-    /// The change to the remaing gas value in the wallet.
+    /// The change to the remaining gas value in the wallet.
     pub gas_change: OrderedHashMap<CostTokenType, i64>,
     /// Should the stack be cleared due to a gap between stack items.
     pub clear_old_stack: bool,
@@ -555,6 +555,7 @@ pub fn compile_invocation(
         CoreConcreteLibfunc::Uint32(libfunc) => uint::build_u32(libfunc, builder),
         CoreConcreteLibfunc::Uint64(libfunc) => uint::build_u64(libfunc, builder),
         CoreConcreteLibfunc::Uint128(libfunc) => uint128::build(libfunc, builder),
+        CoreConcreteLibfunc::Uint256(libfunc) => uint256::build(libfunc, builder),
         CoreConcreteLibfunc::Gas(libfunc) => gas::build(libfunc, builder),
         CoreConcreteLibfunc::BranchAlign(_) => misc::build_branch_align(builder),
         CoreConcreteLibfunc::Array(libfunc) => array::build(libfunc, builder),
@@ -564,13 +565,13 @@ pub fn compile_invocation(
         CoreConcreteLibfunc::UnwrapNonZero(_) => misc::build_identity(builder),
         CoreConcreteLibfunc::FunctionCall(libfunc) => function_call::build(libfunc, builder),
         CoreConcreteLibfunc::UnconditionalJump(_) => misc::build_jump(builder),
-        CoreConcreteLibfunc::ApTracking(_) => misc::build_revoke_ap_tracking(builder),
+        CoreConcreteLibfunc::ApTracking(_) => misc::build_update_ap_tracking(builder),
         CoreConcreteLibfunc::Box(libfunc) => boxing::build(libfunc, builder),
         CoreConcreteLibfunc::Enum(libfunc) => enm::build(libfunc, builder),
         CoreConcreteLibfunc::Struct(libfunc) => structure::build(libfunc, builder),
         CoreConcreteLibfunc::Felt252Dict(libfunc) => felt252_dict::build(libfunc, builder),
         CoreConcreteLibfunc::Pedersen(libfunc) => pedersen::build(libfunc, builder),
-        CoreConcreteLibfunc::BuiltinCost(libfunc) => builtin_cost::build(libfunc, builder),
+        CoreConcreteLibfunc::Poseidon(libfunc) => poseidon::build(libfunc, builder),
         CoreConcreteLibfunc::StarkNet(libfunc) => starknet::build(libfunc, builder),
         CoreConcreteLibfunc::Nullable(libfunc) => nullable::build(libfunc, builder),
         CoreConcreteLibfunc::Cheatcodes(libfunc) => cheatcodes::build(libfunc, builder),

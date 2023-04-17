@@ -327,6 +327,7 @@ cairo_lang_test_utils::test_file_test!(
     {
         constant: "constant",
         enum_: "enum",
+        loop_: "loop",
         item_free_function: "item_free_function",
         function_signature: "function_signature",
         function_call: "function_call",
@@ -338,6 +339,7 @@ cairo_lang_test_utils::test_file_test!(
         module: "module",
         op_eq: "op_eq",
         array: "array",
+        attrs: "attrs",
     },
     test_partial_parser_tree
 );

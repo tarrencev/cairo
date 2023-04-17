@@ -2,4 +2,9 @@
 .vscode/
 .idea/
 .spr.yml
+<<<<<<< HEAD
 *.DS_Store
+=======
+node_modules
+.DS_Store
+>>>>>>> 81c4eb942dace6849a8067dc43263da99579bef8

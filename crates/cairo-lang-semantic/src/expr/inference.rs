@@ -15,14 +15,15 @@ use cairo_lang_utils::extract_matches;
 use cairo_lang_utils::ordered_hash_set::OrderedHashSet;
 use itertools::{zip_eq, Itertools};
 
-use crate::corelib::never_ty;
+use crate::corelib::{core_felt252_ty, get_core_trait, never_ty};
 use crate::db::SemanticGroup;
 use crate::diagnostic::{SemanticDiagnosticKind, SemanticDiagnostics};
 use crate::expr::objects::*;
 use crate::expr::pattern::*;
+use crate::items::constant::Constant;
 use crate::items::functions::{
-    ConcreteFunctionWithBody, GenericFunctionId, GenericFunctionWithBodyId, ImplGenericFunctionId,
-    ImplGenericFunctionWithBodyId,
+    ConcreteFunctionWithBody, ConcreteFunctionWithBodyId, GenericFunctionId,
+    GenericFunctionWithBodyId, ImplGenericFunctionId, ImplGenericFunctionWithBodyId,
 };
 use crate::items::generics::{GenericParamConst, GenericParamImpl, GenericParamType};
 use crate::items::imp::{
@@ -139,7 +140,7 @@ impl InferenceError {
     ) -> DiagnosticAdded {
         match self {
             InferenceError::Failed(diagnostic_added) => *diagnostic_added,
-            // TODO(spapini): Better save hte DiagnosticAdded on the variable.
+            // TODO(spapini): Better save the DiagnosticAdded on the variable.
             InferenceError::AlreadyReported => skip_diagnostic(),
             _ => diagnostics.report_by_ptr(
                 stable_ptr,
@@ -254,12 +255,36 @@ impl<'db> Inference<'db> {
     /// inferred.
     pub fn finalize(&mut self) -> Option<(SyntaxStablePtrId, InferenceError)> {
         // TODO(spapini): Remove the iterative logic in favor of event listeners.
+        let numeric_trait_id = get_core_trait(self.db, "NumericLiteral".into());
+        let felt_ty = core_felt252_ty(self.db);
         loop {
             let version = self.version;
             for var in self.impl_vars.clone().into_iter() {
                 if let Err(err) = self.relax_impl_var(var) {
                     return Some((var.stable_ptr, err));
                 }
+            }
+            // If nothing has changed, try to relax numeric literals.
+            // TODO(spapini): Think of a way to generalize this.
+            if version != self.version {
+                continue;
+            }
+            for var in self.impl_vars.clone().into_iter() {
+                if self.impl_assignment.contains_key(&var.id) {
+                    continue;
+                }
+                if var.concrete_trait_id.trait_id(self.db) != numeric_trait_id {
+                    continue;
+                }
+                // Uninferred numeric trait. Resolve as felt252.
+                let ty = extract_matches!(
+                    var.concrete_trait_id.generic_args(self.db)[0],
+                    GenericArgumentId::Type
+                );
+                if let Err(err) = self.conform_ty(ty, felt_ty) {
+                    return Some((var.stable_ptr, err));
+                }
+                break;
             }
             if version == self.version {
                 return self.first_undetermined_variable();
@@ -345,8 +370,17 @@ impl<'db> Inference<'db> {
         match long_ty1 {
             TypeLongId::Var(var) => return Ok((self.assign_ty(var, ty0)?, 0)),
             TypeLongId::Missing(_) => return Ok((ty1, 0)),
-            TypeLongId::Snapshot(inner_ty) if ty0_is_self && inner_ty == ty0 => {
-                return Ok((ty1, 1));
+            TypeLongId::Snapshot(inner_ty) => {
+                if ty0_is_self {
+                    if inner_ty == ty0 {
+                        return Ok((ty1, 1));
+                    }
+                    if !matches!(self.db.lookup_intern_type(ty0), TypeLongId::Snapshot(_)) {
+                        if let TypeLongId::Var(var) = self.db.lookup_intern_type(inner_ty) {
+                            return Ok((self.assign_ty(var, ty0)?, 1));
+                        }
+                    }
+                }
             }
             _ => {}
         }
@@ -869,7 +903,7 @@ impl<'db> Inference<'db> {
         )
         .map_err(InferenceError::Failed)?;
         self.impl_var_data[var.id].candidates = Some(candidates.clone());
-        log::debug!(
+        log::trace!(
             "Impl inference candidates for {:?} at {:?}: {:?}",
             concrete_trait_id.debug(self.db.elongate()),
             lookup_context.debug(self.db.elongate()),
