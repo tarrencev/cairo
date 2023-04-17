@@ -112,4 +112,4 @@ fn deploy_contract_cairo0(
 
 extern fn call(
     contract: felt252, function_name: felt252, calldata: Array::<felt252>
-) -> Result::<(Array::<felt252>), felt252> nopanic;
+) -> Result::<(Array::<felt252>,), felt252> nopanic;
