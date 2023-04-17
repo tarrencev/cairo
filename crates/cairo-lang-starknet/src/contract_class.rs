@@ -78,7 +78,6 @@ pub struct ContractEntryPoint {
 pub fn compile_path(
     path: &Path,
     compiler_config: CompilerConfig<'_>,
-    maybe_cairo_paths: Option<Vec<&str>>,
 ) -> Result<ContractClass> {
     let mut db = RootDatabase::builder().detect_corelib().with_starknet().build()?;
 

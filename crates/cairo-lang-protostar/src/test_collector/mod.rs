@@ -16,6 +16,7 @@ use cairo_lang_lowering::ids::ConcreteFunctionWithBodyId;
 use cairo_lang_plugins::get_default_plugins;
 use cairo_lang_semantic::db::SemanticGroup;
 use cairo_lang_semantic::items::functions::GenericFunctionId;
+use cairo_lang_semantic::literals::LiteralLongId;
 use cairo_lang_semantic::{ConcreteFunction, FunctionLongId};
 use cairo_lang_sierra::extensions::enm::EnumType;
 use cairo_lang_sierra::extensions::NamedType;
@@ -30,7 +31,6 @@ use cairo_lang_utils::OptionHelper;
 use dojo_lang::plugin::DojoPlugin;
 use itertools::Itertools;
 use unescaper::unescape;
-
 use crate::casm_generator::{SierraCasmGenerator, TestConfig as TestConfigInternal};
 
 /// Expectation for a panic case.
@@ -124,7 +124,7 @@ pub fn try_extract_test_config(
         if let AttributeArg {
             variant: AttributeArgVariant::Unnamed { value: ast::Expr::Literal(literal), .. },
             ..
-        } = attr.args[0]
+        } = &attr.args[0]
         {
             literal.token(db).text(db).parse::<usize>().ok()
         } else {
@@ -183,7 +183,7 @@ fn extract_panic_values(db: &dyn SyntaxGroup, attr: &Attribute) -> Option<Vec<Fe
     let AttributeArg {
         variant: AttributeArgVariant::Unnamed { value: ast::Expr::Binary(binary), .. },
         ..
-    } = attr.args[0] else {
+    } = &attr.args[0] else {
         return None;
     };
 
@@ -200,7 +200,7 @@ fn extract_panic_values(db: &dyn SyntaxGroup, attr: &Attribute) -> Option<Vec<Fe
         .into_iter()
         .map(|value| match value {
             ast::Expr::Literal(literal) => {
-                Felt252::try_from(literal.numeric_value(db).unwrap_or_default()).ok()
+                Felt252::try_from(LiteralLongId::try_from(literal.token(db).text(db)).ok()?.value).ok()
             }
             ast::Expr::ShortString(short_string_syntax) => {
                 let text = short_string_syntax.text(db);

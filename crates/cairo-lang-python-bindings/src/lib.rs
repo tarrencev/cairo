@@ -48,12 +48,10 @@ fn compile_starknet_contract_to_sierra_from_path(
 
 fn starknet_cairo_to_sierra(
     input_path: &str,
-    maybe_cairo_paths: Option<Vec<&str>>,
 ) -> Result<String, anyhow::Error> {
     let contract = compile_starknet(
         &PathBuf::from(input_path),
         CompilerConfig { replace_ids: true, ..CompilerConfig::default() },
-        maybe_cairo_paths,
     )?;
     let sierra =
         serde_json::to_string_pretty(&contract).with_context(|| "Serialization failed.")?;

@@ -76,7 +76,7 @@ quote = "1.0.21"
 rayon = "1.7.0"
 rstest = "0.16.0"
 salsa = "0.16.1"
-scarb-metadata = "1.0.1"
+scarb-metadata = "1.1.0"
 serde = { version = "1.0.130", features = ["derive"] }
 serde_json = "1.0"
 sha3 = "0.10.6"
@@ -91,3 +91,20 @@ toml = "0.4.2"
 tower-lsp = "0.17.0"
 unescaper = "0.1.1"
 xshell = "0.2.2"
+
+[patch.crates-io]
+cairo-lang-compiler = { path = "crates/cairo-lang-compiler" }
+cairo-lang-defs = { path = "crates/cairo-lang-defs" }
+cairo-lang-diagnostics = { path = "crates/cairo-lang-diagnostics" }
+cairo-lang-filesystem = { path = "crates/cairo-lang-filesystem" }
+cairo-lang-parser = { path = "crates/cairo-lang-parser" }
+cairo-lang-lowering = { path = "crates/cairo-lang-lowering" }
+cairo-lang-semantic = { path = "crates/cairo-lang-semantic" }
+cairo-lang-syntax = { path = "crates/cairo-lang-syntax" }
+cairo-lang-sierra = { path = "crates/cairo-lang-sierra" }
+cairo-lang-sierra-ap-change = { path = "crates/cairo-lang-sierra-ap-change" }
+cairo-lang-sierra-gas = { path = "crates/cairo-lang-sierra-gas" }
+cairo-lang-sierra-generator = { path = "crates/cairo-lang-sierra-generator" }
+cairo-lang-sierra-to-casm = { path = "crates/cairo-lang-sierra-to-casm" }
+cairo-lang-starknet = { path = "crates/cairo-lang-starknet" }
+cairo-lang-utils = { path = "crates/cairo-lang-utils" }
