@@ -4,6 +4,7 @@ use super::bitwise::{BitwiseLibfunc, BitwiseType};
 use super::boolean::BoolLibfunc;
 use super::branch_align::BranchAlignLibfunc;
 use super::casts::CastLibfunc;
+use super::cheatcodes::CheatcodesLibFunc;
 use super::debug::DebugLibfunc;
 use super::drop::DropLibfunc;
 use super::duplicate::DupLibfunc;
@@ -99,6 +100,7 @@ define_libfunc_hierarchy! {
         Pedersen(PedersenLibfunc),
         Poseidon(PoseidonLibfunc),
         StarkNet(StarkNetLibfunc),
+        Cheatcodes(CheatcodesLibFunc),
         Debug(DebugLibfunc),
         SnapshotTake(SnapshotTakeLibfunc),
     }, CoreConcreteLibfunc

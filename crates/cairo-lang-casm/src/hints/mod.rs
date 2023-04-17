@@ -163,6 +163,94 @@ pub enum Hint {
     SystemCall {
         system: ResOperand,
     },
+    Roll {
+        address: ResOperand,
+        caller_address: ResOperand,
+        err_code: CellRef,
+    },
+    Warp {
+        blk_timestamp: ResOperand,
+        target_contract_address: ResOperand,
+        err_code: CellRef,
+    },
+    Declare {
+        contract: ResOperand,
+        result: CellRef,
+        err_code: CellRef,
+    },
+    DeclareCairo0 {
+        contract: ResOperand,
+        result: CellRef,
+        err_code: CellRef,
+    },
+    StartPrank {
+        caller_address: ResOperand,
+        target_contract_address: ResOperand,
+        err_code: CellRef,
+    },
+    StopPrank {
+        target_contract_address: ResOperand,
+        err_code: CellRef,
+    },
+    Invoke {
+        contract_address: ResOperand,
+        function_name: ResOperand,
+        calldata_start: ResOperand,
+        calldata_end: ResOperand,
+        err_code: CellRef,
+    },
+    MockCall {
+        contract_address: ResOperand,
+        function_name: ResOperand,
+        response_start: ResOperand,
+        response_end: ResOperand,
+        err_code: CellRef,
+    },
+    Deploy {
+        prepared_contract_address: ResOperand,
+        prepared_class_hash: ResOperand,
+        prepared_constructor_calldata_start: ResOperand,
+        prepared_constructor_calldata_end: ResOperand,
+        deployed_contract_address: CellRef,
+        err_code: CellRef,
+    },
+    DeployCairo0 {
+        prepared_contract_address: ResOperand,
+        prepared_class_hash: ResOperand,
+        prepared_constructor_calldata_start: ResOperand,
+        prepared_constructor_calldata_end: ResOperand,
+        deployed_contract_address: CellRef,
+        err_code: CellRef,
+    },
+    Prepare {
+        class_hash: ResOperand,
+        calldata_start: ResOperand,
+        calldata_end: ResOperand,
+        contract_address: CellRef,
+        return_class_hash: CellRef,
+        constructor_calldata_start: CellRef,
+        constructor_calldata_end: CellRef,
+        err_code: CellRef,
+    },
+    PrepareCairo0 {
+        class_hash: ResOperand,
+        calldata_start: ResOperand,
+        calldata_end: ResOperand,
+        contract_address: CellRef,
+        return_class_hash: CellRef,
+        constructor_calldata_start: CellRef,
+        constructor_calldata_end: CellRef,
+        err_code: CellRef,
+    },
+    Call {
+        contract_address: ResOperand,
+        function_name: ResOperand,
+        calldata_start: ResOperand,
+        calldata_end: ResOperand,
+        return_data_start: CellRef,
+        return_data_end: CellRef,
+        err_code: CellRef,
+    },
     /// Prints the values from start to end.
     /// Both must be pointers.
     DebugPrint {
@@ -400,6 +488,273 @@ impl Display for Hint {
             }
             Hint::SystemCall { system } => {
                 write!(f, "syscall_handler.syscall(syscall_ptr={})", ResOperandFormatter(system))
+            }
+            Hint::Roll { address, caller_address, err_code } => {
+                writedoc!(
+                    f,
+                    "
+                    memory{err_code} = roll(address=memory[{address}[0]], \
+                     caller_address=memory[{caller_address}[0]]).err_code; 
+                    "
+                )
+            }
+            Hint::Warp { blk_timestamp, target_contract_address, err_code } => {
+                writedoc!(
+                    f,
+                    "
+                    memory{err_code} = warp(blk_timestamp=memory[{blk_timestamp}[0]], \
+                     target_contract_address=memory[{target_contract_address}[0]]).err_code; 
+                    "
+                )
+            }
+            Hint::StartPrank { caller_address, target_contract_address, err_code } => {
+                writedoc!(
+                    f,
+                    "
+                    memory{err_code} = start_prank(caller_address=memory[{caller_address}[0]], \
+                     target_contract_address=memory[{target_contract_address}[0]]).err_code;
+                    "
+                )
+            }
+            Hint::StopPrank { target_contract_address, err_code } => {
+                writedoc!(
+                    f,
+                    "
+                    memory{err_code} = \
+                     stop_prank(target_contract_address=memory[{target_contract_address}[0]]).\
+                     err_code
+                    "
+                )
+            }
+            Hint::Declare { contract, result, err_code } => {
+                writedoc!(
+                    f,
+                    "
+                    r = declare(contract=memory[{contract}[0]]);
+                    memory{err_code} = r.err_code
+                    memory{result} = 0 if r.err_code != 0 else r.ok.class_hash
+                    "
+                )
+            }
+            Hint::DeclareCairo0 { contract, result, err_code } => {
+                writedoc!(
+                    f,
+                    "
+                    r = declare_cairo0(contract=memory[{contract}[0]]);
+                    memory{err_code} = r.err_code
+                    memory{result} = 0 if r.err_code != 0 else r.ok.class_hash
+                    "
+                )
+            }
+            Hint::Invoke {
+                contract_address,
+                function_name,
+                calldata_start,
+                calldata_end,
+                err_code,
+            } => {
+                writedoc!(
+                    f,
+                    "
+                        calldata = []
+                        it = memory[{calldata_start}[0]]
+                        end = memory[{calldata_end}[0]]
+                        while it != end:
+                            calldata.append(memory[it])
+                            it = it + 1
+                        r = invoke(
+                            contract_address=memory[{contract_address}[0]],
+                            function_name=memory[{function_name}[0]],
+                            calldata=calldata,
+                        )
+                        memory{err_code} = r.err_code
+                    "
+                )
+            }
+            Hint::MockCall {
+                contract_address,
+                function_name,
+                response_start,
+                response_end,
+                err_code,
+            } => {
+                writedoc!(
+                    f,
+                    "
+                    response = []
+                    it = memory[{response_start}[0]]
+                    end = memory[{response_end}[0]]
+                    while it != end:
+                        response.append(memory[it])
+                        it = it + 1
+                    r = mock_call(
+                        contract_address=memory[{contract_address}[0]],
+                        function_name=memory[{function_name}[0]],
+                        response=response,
+                    );
+                    memory{err_code} = r.err_code
+                    "
+                )
+            }
+            Hint::Deploy {
+                prepared_contract_address,
+                prepared_class_hash,
+                prepared_constructor_calldata_start,
+                prepared_constructor_calldata_end,
+                deployed_contract_address,
+                err_code,
+            } => {
+                writedoc!(
+                    f,
+                    "
+                    calldata = []
+                    it = memory[{prepared_constructor_calldata_start}[0]]
+                    end = memory[{prepared_constructor_calldata_end}[0]]
+                    while it != end:
+                        calldata.append(memory[it])
+                        it = it + 1
+                    r = deploy_tp(
+                        contract_address=memory[{prepared_contract_address}[0]],
+                        class_hash=memory[{prepared_class_hash}[0]],
+                        constructor_calldata=calldata,
+                    );
+                    memory{err_code} = r.err_code
+                    memory{deployed_contract_address} = 0 if r.err_code != 0 else \
+                     r.ok.contract_address
+                    "
+                )
+            }
+            Hint::DeployCairo0 {
+                prepared_contract_address,
+                prepared_class_hash,
+                prepared_constructor_calldata_start,
+                prepared_constructor_calldata_end,
+                deployed_contract_address,
+                err_code,
+            } => {
+                writedoc!(
+                    f,
+                    "
+                    calldata = []
+                    it = memory[{prepared_constructor_calldata_start}[0]]
+                    end = memory[{prepared_constructor_calldata_end}[0]]
+                    while it != end:
+                        calldata.append(memory[it])
+                        it = it + 1
+                    r = deploy_tp_cairo0(
+                        contract_address=memory[{prepared_contract_address}[0]],
+                        class_hash=memory[{prepared_class_hash}[0]],
+                        constructor_calldata=calldata,
+                    );
+                    memory{err_code} = r.err_code
+                    memory{deployed_contract_address} = 0 if r.err_code != 0 else \
+                     r.ok.deployed_contract_address
+                    "
+                )
+            }
+            Hint::Prepare {
+                class_hash,
+                calldata_start,
+                calldata_end,
+                contract_address,
+                return_class_hash,
+                constructor_calldata_start,
+                constructor_calldata_end,
+                err_code,
+            } => {
+                writedoc!(
+                    f,
+                    "
+                    calldata = []
+                    it = memory[{calldata_start}[0]]
+                    end = memory[{calldata_end}[0]]
+                    while it != end:
+                        calldata.append(memory[it])
+                        it = it + 1
+                    r = prepare_tp(
+                        class_hash=memory[{class_hash}[0]],
+                        calldata=calldata
+                    )
+                    memory{err_code} = r.err_code
+                    memory{contract_address} = 0 if r.err_code != 0 else r.ok.contract_address
+                    memory{return_class_hash} = 0 if r.err_code != 0 else r.ok.class_hash
+
+                    constructor_calldata_start = segments.add()
+                    constructor_calldata_end = constructor_calldata_start
+                    if r.err_code == 0 and r.ok.constructor_calldata:
+                        constructor_calldata_end = segments.load_data(constructor_calldata_start, \
+                     r.ok.constructor_calldata + [0]) - 1
+                    memory{constructor_calldata_start} = constructor_calldata_start
+                    memory{constructor_calldata_end} = constructor_calldata_end
+                    "
+                )
+            }
+            Hint::PrepareCairo0 {
+                class_hash,
+                calldata_start,
+                calldata_end,
+                contract_address,
+                return_class_hash,
+                constructor_calldata_start,
+                constructor_calldata_end,
+                err_code,
+            } => {
+                writedoc!(
+                    f,
+                    "
+                    calldata = []
+                    it = memory[{calldata_start}[0]]
+                    end = memory[{calldata_end}[0]]
+                    while it != end:
+                        calldata.append(memory[it])
+                        it = it + 1
+                    r = prepare_tp_cairo0(
+                        class_hash=memory[{class_hash}[0]],
+                        calldata=calldata
+                    )
+                    memory{err_code} = r.err_code
+                    memory{contract_address} = 0 if r.err_code != 0 else r.ok.contract_address
+                    memory{return_class_hash} = 0 if r.err_code != 0 else r.ok.class_hash
+                    memory{constructor_calldata_start} = memory[{calldata_start}[0]] if r.err_code \
+                     != 0 else 0
+                    memory{constructor_calldata_end} = memory[{calldata_end}[0]] if r.err_code != \
+                     0 else 0
+                    "
+                )
+            }
+            Hint::Call {
+                contract_address,
+                function_name,
+                calldata_start,
+                calldata_end,
+                return_data_start,
+                return_data_end,
+                err_code,
+            } => {
+                writedoc!(
+                    f,
+                    "
+                    calldata = []
+                    it = memory[{calldata_start}[0]]
+                    end = memory[{calldata_end}[0]]
+                    while it != end:
+                        calldata.append(memory[it])
+                        it = it + 1
+                    r = call(
+                        contract_address=memory[{contract_address}[0]],
+                        function_name=memory[{function_name}[0]],
+                        calldata=calldata
+                    )
+                    memory{err_code} = r.err_code
+                    return_data_start = segments.add()
+                    return_data_end = return_data_start
+                    if r.err_code == 0 and r.ok.return_data:
+                        return_data_end = segments.load_data(return_data_start, r.ok.return_data + \
+                     [0]) - 1
+                    memory{return_data_start} = return_data_start
+                    memory{return_data_end} = return_data_end
+                    "
+                )
             }
             Hint::GetCurrentAccessIndex { range_check_ptr } => writedoc!(
                 f,

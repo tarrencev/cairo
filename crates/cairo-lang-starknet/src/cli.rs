@@ -39,6 +39,7 @@ fn main() -> anyhow::Result<()> {
         &args.path,
         args.contract_path.as_deref(),
         CompilerConfig { replace_ids: args.replace_ids, ..CompilerConfig::default() },
+        None,
     )?;
     validate_compatible_sierra_version(&contract, list_selector)?;
     let res = serde_json::to_string_pretty(&contract).with_context(|| "Serialization failed.")?;

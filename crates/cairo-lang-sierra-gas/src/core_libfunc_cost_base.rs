@@ -4,6 +4,7 @@ use cairo_lang_sierra::extensions::array::ArrayConcreteLibfunc;
 use cairo_lang_sierra::extensions::boolean::BoolConcreteLibfunc;
 use cairo_lang_sierra::extensions::boxing::BoxConcreteLibfunc;
 use cairo_lang_sierra::extensions::casts::CastConcreteLibfunc;
+use cairo_lang_sierra::extensions::cheatcodes::CheatcodesConcreteLibFunc;
 use cairo_lang_sierra::extensions::core::CoreConcreteLibfunc::{self, *};
 use cairo_lang_sierra::extensions::ec::EcConcreteLibfunc;
 use cairo_lang_sierra::extensions::enm::EnumConcreteLibfunc;
@@ -324,6 +325,21 @@ pub fn core_libfunc_cost(
         },
         CoreConcreteLibfunc::Debug(_) => vec![steps(1).into()],
         CoreConcreteLibfunc::SnapshotTake(_) => vec![steps(0).into()],
+        CoreConcreteLibfunc::Cheatcodes(libfunc) => match libfunc {
+            CheatcodesConcreteLibFunc::Declare(_) => vec![steps(2).into(), steps(2).into()],
+            CheatcodesConcreteLibFunc::DeclareCairo0(_) => vec![steps(2).into(), steps(2).into()],
+            CheatcodesConcreteLibFunc::Roll(_) => vec![steps(1).into(), steps(1).into()],
+            CheatcodesConcreteLibFunc::Warp(_) => vec![steps(1).into(), steps(1).into()],
+            CheatcodesConcreteLibFunc::StartPrank(_) => vec![steps(1).into(), steps(1).into()],
+            CheatcodesConcreteLibFunc::StopPrank(_) => vec![steps(1).into(), steps(1).into()],
+            CheatcodesConcreteLibFunc::Invoke(_) => vec![steps(1).into(), steps(1).into()],
+            CheatcodesConcreteLibFunc::MockCall(_) => vec![steps(1).into(), steps(1).into()],
+            CheatcodesConcreteLibFunc::Deploy(_) => vec![steps(2).into(), steps(2).into()],
+            CheatcodesConcreteLibFunc::DeployCairo0(_) => vec![steps(2).into(), steps(2).into()],
+            CheatcodesConcreteLibFunc::Prepare(_) => vec![steps(2).into(), steps(2).into()],
+            CheatcodesConcreteLibFunc::PrepareCairo0(_) => vec![steps(2).into(), steps(2).into()],
+            CheatcodesConcreteLibFunc::Call(_) => vec![steps(2).into(), steps(2).into()],
+        },
     }
 }
 

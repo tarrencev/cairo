@@ -468,6 +468,19 @@ impl HintProcessor for CairoHintProcessor {
                     panic!("Unknown selector for system call!");
                 }
             }
+            &Hint::Roll { .. } => todo!(),
+            &Hint::Warp { .. } => todo!(),
+            &Hint::Declare { .. } => todo!(),
+            &Hint::DeclareCairo0 { .. } => todo!(),
+            &Hint::StartPrank { .. } => todo!(),
+            &Hint::StopPrank { .. } => todo!(),
+            &Hint::Invoke { .. } => todo!(),
+            &Hint::MockCall { .. } => todo!(),
+            &Hint::Deploy { .. } => todo!(),
+            &Hint::DeployCairo0 { .. } => todo!(),
+            &Hint::Prepare { .. } => todo!(),
+            &Hint::PrepareCairo0 { .. } => todo!(),
+            &Hint::Call { .. } => todo!(),
             Hint::SetBlockNumber { value } => {
                 starknet_execution_scope(exec_scopes)?.exec_info.block_info.block_number =
                     get_val(vm, value)?;
