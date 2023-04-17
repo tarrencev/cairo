@@ -33,6 +33,7 @@ use cairo_lang_syntax::node::{ast, Terminal, Token, TypedSyntaxNode};
 use cairo_lang_utils::OptionHelper;
 use itertools::Itertools;
 use unescaper::unescape;
+use dojo_lang::plugin::DojoPlugin;
 
 use crate::casm_generator::{SierraCasmGenerator, TestConfig as TestConfigInternal};
 
@@ -218,6 +219,7 @@ pub fn collect_tests(
         Arc::new(DerivePlugin {}),
         Arc::new(PanicablePlugin {}),
         Arc::new(ConfigPlugin { configs: HashSet::from(["test".to_string()]) }),
+        Arc::new(DojoPlugin {}),
         Arc::new(StarkNetPlugin {}),
     ];
     let db = &mut RootDatabase::builder()
