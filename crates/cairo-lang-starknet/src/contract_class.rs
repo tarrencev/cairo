@@ -83,11 +83,6 @@ pub fn compile_path(
     let mut db = RootDatabase::builder().detect_corelib().with_starknet().build()?;
 
     let main_crate_ids = setup_project(&mut db, Path::new(&path))?;
-    if let Some(cairo_paths) = maybe_cairo_paths {
-        for cairo_path in cairo_paths {
-            setup_project(&mut db, Path::new(cairo_path))?;
-        }
-    }
 
     compile_contract_in_prepared_db(&mut db, contract_path, main_crate_ids, compiler_config)
 }

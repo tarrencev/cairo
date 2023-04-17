@@ -4,6 +4,7 @@ use cairo_lang_sierra::extensions::array::ArrayConcreteLibfunc;
 use cairo_lang_sierra::extensions::boolean::BoolConcreteLibfunc;
 use cairo_lang_sierra::extensions::boxing::BoxConcreteLibfunc;
 use cairo_lang_sierra::extensions::casts::CastConcreteLibfunc;
+use cairo_lang_sierra::extensions::cheatcodes::CheatcodesConcreteLibFunc;
 use cairo_lang_sierra::extensions::core::CoreConcreteLibfunc::{self, *};
 use cairo_lang_sierra::extensions::ec::EcConcreteLibfunc;
 use cairo_lang_sierra::extensions::enm::EnumConcreteLibfunc;
@@ -32,7 +33,6 @@ use cairo_lang_sierra::program::Function;
 use cairo_lang_utils::ordered_hash_map::OrderedHashMap;
 use itertools::{chain, Itertools};
 
-use crate::cheatcodes_libfunc_cost_base::cheatcodes_libfunc_cost_base;
 use crate::objects::{BranchCost, ConstCost, CostInfoProvider, PreCost};
 use crate::starknet_libfunc_cost_base::starknet_libfunc_cost_base;
 
@@ -325,6 +325,21 @@ pub fn core_libfunc_cost(
         },
         CoreConcreteLibfunc::Debug(_) => vec![steps(1).into()],
         CoreConcreteLibfunc::SnapshotTake(_) => vec![steps(0).into()],
+        CoreConcreteLibfunc::Cheatcodes(libfunc) => match libfunc {
+            CheatcodesConcreteLibFunc::Declare(_) => vec![steps(2).into(), steps(2).into()],
+            CheatcodesConcreteLibFunc::DeclareCairo0(_) => vec![steps(2).into(), steps(2).into()],
+            CheatcodesConcreteLibFunc::Roll(_) => vec![steps(1).into(), steps(1).into()],
+            CheatcodesConcreteLibFunc::Warp(_) => vec![steps(1).into(), steps(1).into()],
+            CheatcodesConcreteLibFunc::StartPrank(_) => vec![steps(1).into(), steps(1).into()],
+            CheatcodesConcreteLibFunc::StopPrank(_) => vec![steps(1).into(), steps(1).into()],
+            CheatcodesConcreteLibFunc::Invoke(_) => vec![steps(1).into(), steps(1).into()],
+            CheatcodesConcreteLibFunc::MockCall(_) => vec![steps(1).into(), steps(1).into()],
+            CheatcodesConcreteLibFunc::Deploy(_) => vec![steps(2).into(), steps(2).into()],
+            CheatcodesConcreteLibFunc::DeployCairo0(_) => vec![steps(2).into(), steps(2).into()],
+            CheatcodesConcreteLibFunc::Prepare(_) => vec![steps(2).into(), steps(2).into()],
+            CheatcodesConcreteLibFunc::PrepareCairo0(_) => vec![steps(2).into(), steps(2).into()],
+            CheatcodesConcreteLibFunc::Call(_) => vec![steps(2).into(), steps(2).into()],
+        },
     }
 }
 
@@ -422,127 +437,10 @@ pub fn core_libfunc_precost<Ops: CostOperations>(
                 } else {
                     ops.steps(0)
                 }
-            },
-            Array(ArrayConcreteLibfunc::Len(libfunc)) => {
-                vec![ops.steps(if info_provider.type_size(&libfunc.ty) == 1 { 0 } else { 1 })]
             }
-            Uint128(libfunc) => u128_libfunc_cost(ops, libfunc),
-            Uint8(libfunc) => u8_libfunc_cost(ops, libfunc),
-            Uint16(libfunc) => u16_libfunc_cost(ops, libfunc),
-            Uint32(libfunc) => u32_libfunc_cost(ops, libfunc),
-            Uint64(libfunc) => u64_libfunc_cost(ops, libfunc),
-            Felt252(libfunc) => felt252_libfunc_cost(ops, libfunc),
-            Drop(_) | Dup(_) | ApTracking(_) | UnwrapNonZero(_) | Mem(Rename(_)) => {
-                vec![ops.steps(0)]
-            }
-            Box(libfunc) => match libfunc {
-                BoxConcreteLibfunc::Into(libfunc) => {
-                    vec![ops.steps(std::cmp::max(
-                        1,
-                        info_provider.type_size(&libfunc.ty).try_into().unwrap(),
-                    ))]
-                }
-                BoxConcreteLibfunc::Unbox(_) => vec![ops.steps(0)],
-            },
-            Mem(StoreTemp(libfunc)) => {
-                vec![ops.steps(info_provider.type_size(&libfunc.ty) as i32)]
-            }
-            Mem(StoreLocal(libfunc)) => {
-                let size = info_provider.type_size(&libfunc.ty) as i32;
-                vec![ops.const_cost(ConstCost { steps: size, holes: -size, range_checks: 0 })]
-            }
-            Mem(AllocLocal(libfunc)) => {
-                vec![ops.holes(info_provider.type_size(&libfunc.ty) as i32)]
-            }
-
-            Mem(FinalizeLocals(_)) | UnconditionalJump(_) => {
-                vec![ops.steps(1)]
-            }
-            Enum(EnumConcreteLibfunc::Init(_)) => vec![ops.steps(0)],
-            Enum(EnumConcreteLibfunc::Match(sig) | EnumConcreteLibfunc::SnapshotMatch(sig)) => {
-                let n = sig.signature.branch_signatures.len();
-                match n {
-                    0 => unreachable!(),
-                    1 => vec![ops.steps(0)],
-                    2 => vec![ops.steps(1); 2],
-                    _ => chain!(iter::once(ops.steps(1)), itertools::repeat_n(ops.steps(2), n - 1),)
-                        .collect_vec(),
-                }
-            }
-            Struct(
-                StructConcreteLibfunc::Construct(_)
-                | StructConcreteLibfunc::Deconstruct(_)
-                | StructConcreteLibfunc::SnapshotDeconstruct(_),
-            ) => {
-                vec![ops.steps(0)]
-            }
-            Felt252Dict(Felt252DictConcreteLibfunc::New(_)) => {
-                vec![ops.steps(9)]
-            }
-            Felt252Dict(Felt252DictConcreteLibfunc::Read(_)) => {
-                vec![
-                    ops.add(
-                        ops.steps(3),
-                        ops.cost_token(DICT_SQUASH_ACCESS_COST, CostTokenType::Const),
-                    ),
-                ]
-            }
-            Felt252Dict(Felt252DictConcreteLibfunc::Write(_)) => {
-                vec![
-                    ops.add(
-                        ops.steps(2),
-                        ops.cost_token(DICT_SQUASH_ACCESS_COST, CostTokenType::Const),
-                    ),
-                ]
-            }
-            Felt252Dict(Felt252DictConcreteLibfunc::Squash(_)) => {
-                // Dict squash have a fixed cost of 'DICT_SQUASH_CONST_COST' + `DICT_SQUASH_ACCESS_COST`
-                // for each dict access. Only the fixed cost is charged here, so that we
-                // would alway be able to call squash even if running out of gas. The cost
-                // of the proccesing of the first key is `DICT_SQUASH_ACCESS_COST`, and each
-                // access for an existing key costs only 'DICT_SQUASH_REPEATED_ACCESS_COST'.
-                // In each read/write we charge `DICT_SQUASH_ACCESS_COST` gas and
-                // `DICT_SQUASH_ACCESS_COST - DICT_SQUASH_REPEATED_ACCESS_COST` gas are refunded per
-                // each succesive access in dict squash.
-                vec![ops.cost_token(DICT_SQUASH_FIXED_COST, CostTokenType::Const)]
-            }
-            Pedersen(libfunc) => match libfunc {
-                PedersenConcreteLibfunc::PedersenHash(_) => vec![ops.steps(2)],
-            },
-            BuiltinCost(builtin_libfunc) => match builtin_libfunc {
-                BuiltinCostConcreteLibfunc::BuiltinWithdrawGas(_) => {
-                    let cost_computation =
-                        BuiltinCostWithdrawGasLibfunc::cost_computation_steps(|token_type| {
-                            info_provider.token_usages(token_type)
-                        }) as i32;
-                    vec![
-                        ops.sub(
-                            ops.const_cost(ConstCost {
-                                steps: cost_computation + 3,
-                                holes: 0,
-                                range_checks: 1,
-                            }),
-                            ops.statement_var_cost(CostTokenType::Const),
-                        ),
-                        ops.const_cost(ConstCost {
-                            steps: cost_computation + 5,
-                            holes: 0,
-                            range_checks: 1,
-                        }),
-                    ]
-                }
-                BuiltinCostConcreteLibfunc::GetBuiltinCosts(_) => vec![ops.steps(3)],
-            },
-            CoreConcreteLibfunc::StarkNet(libfunc) => starknet_libfunc_cost_base(ops, libfunc),
-            CoreConcreteLibfunc::Nullable(libfunc) => match libfunc {
-                NullableConcreteLibfunc::Null(_) => vec![ops.steps(0)],
-                NullableConcreteLibfunc::NullableFromBox(_) => vec![ops.steps(0)],
-                NullableConcreteLibfunc::MatchNullable(_) => vec![ops.steps(1), ops.steps(1)],
-            },
-            CoreConcreteLibfunc::Debug(_) => vec![ops.steps(1)],
-            CoreConcreteLibfunc::Cheatcodes(libfunc) => cheatcodes_libfunc_cost_base(ops, libfunc),
-            CoreConcreteLibfunc::SnapshotTake(_) => vec![ops.steps(0)],
-        });
+            BranchCost::RedepositGas => ops.steps(0),
+        })
+        .collect()
 }
 
 /// Returns the sum of statement variables for all the requested tokens.
