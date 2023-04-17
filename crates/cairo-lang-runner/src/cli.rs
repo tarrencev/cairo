@@ -8,6 +8,10 @@ use cairo_lang_compiler::diagnostics::DiagnosticsReporter;
 use cairo_lang_compiler::project::setup_project;
 use cairo_lang_diagnostics::ToOption;
 use cairo_lang_runner::SierraCasmRunner;
+use cairo_lang_sierra::extensions::gas::{
+    BuiltinCostWithdrawGasLibfunc, RedepositGasLibfunc, WithdrawGasLibfunc,
+};
+use cairo_lang_sierra::extensions::NamedLibfunc;
 use cairo_lang_sierra_generator::db::SierraGenGroup;
 use cairo_lang_sierra_generator::replace_ids::replace_sierra_ids_in_program;
 use clap::Parser;
@@ -18,7 +22,6 @@ use clap::Parser;
 #[clap(version, verbatim_doc_comment)]
 struct Args {
     /// The file to compile and run.
-    #[arg(short, long)]
     path: String,
     /// In cases where gas is available, the amount of provided gas.
     #[arg(long)]
@@ -43,9 +46,21 @@ fn main() -> anyhow::Result<()> {
         .get_sierra_program(main_crate_ids)
         .to_option()
         .with_context(|| "Compilation failed without any diagnostics.")?;
+    if args.available_gas.is_none()
+        && sierra_program.type_declarations.iter().any(|decl| {
+            matches!(
+                decl.long_id.generic_id.0.as_str(),
+                WithdrawGasLibfunc::STR_ID
+                    | BuiltinCostWithdrawGasLibfunc::STR_ID
+                    | RedepositGasLibfunc::STR_ID
+            )
+        })
+    {
+        anyhow::bail!("Program requires gas counter, please provide `--available_gas` argument.");
+    }
     let runner = SierraCasmRunner::new(
         replace_sierra_ids_in_program(db, &sierra_program),
-        args.available_gas.is_some(),
+        if args.available_gas.is_some() { Some(Default::default()) } else { None },
     )
     .with_context(|| "Failed setting up runner.")?;
     let result = runner

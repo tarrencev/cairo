@@ -46,7 +46,7 @@ impl State {
         self.get_value(var).unchecked_apply_known_ap_change(self.ap_change)
     }
 
-    /// Returns the value, assumming it is a direct cell reference.
+    /// Returns the value, assuming it is a direct cell reference.
     pub fn get_adjusted_as_cell_ref(&self, var: Var) -> CellRef {
         extract_matches!(self.get_adjusted(var), CellExpression::Deref)
     }
@@ -80,7 +80,7 @@ impl State {
 
 /// A statement added to the builder.
 enum Statement {
-    /// A final instruction, no need for further editting.
+    /// A final instruction, no need for further editing.
     Final(Instruction),
     /// A jump or call command, requires fixing the actual target label.
     Jump(String, Instruction),
@@ -244,7 +244,7 @@ impl CasmBuilder {
             inputs.map(|v| match self.get_value(v, true) {
                 CellExpression::Deref(cell) => ResOperand::Deref(cell),
                 CellExpression::DoubleDeref(cell, offset) => ResOperand::DoubleDeref(cell, offset),
-                CellExpression::Immediate(imm) => ResOperand::Immediate(imm.into()),
+                CellExpression::Immediate(imm) => imm.into(),
                 CellExpression::BinOp { op, a: other, b } => match op {
                     CellOperator::Add => {
                         ResOperand::BinOp(BinOpOperand { op: Operation::Add, a: other, b })
@@ -341,9 +341,7 @@ impl CasmBuilder {
     /// Increases AP by `size`.
     pub fn add_ap(&mut self, size: usize) {
         let instruction = self.get_instruction(
-            InstructionBody::AddAp(AddApInstruction {
-                operand: ResOperand::Immediate(BigInt::from(size).into()),
-            }),
+            InstructionBody::AddAp(AddApInstruction { operand: BigInt::from(size).into() }),
             false,
         );
         self.statements.push(Statement::Final(instruction));
@@ -503,7 +501,6 @@ impl CasmBuilder {
         self.main_state.vars = main_vars;
         self.main_state.allocated = 0;
         self.main_state.ap_change = 0;
-        self.main_state.steps += 2;
         let function_state = State { vars: function_vars, ..Default::default() };
         self.set_or_test_label_state(label, function_state);
     }

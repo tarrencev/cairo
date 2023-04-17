@@ -7,17 +7,18 @@ use cairo_lang_defs::ids::{
 };
 use cairo_lang_diagnostics::{Diagnostics, DiagnosticsBuilder, Maybe, ToMaybe};
 use cairo_lang_proc_macros::{DebugWithDb, SemanticObject};
+use cairo_lang_syntax::attribute::structured::{Attribute, AttributeListStructurize};
 use cairo_lang_syntax::node::{ast, TypedSyntaxNode};
 use cairo_lang_utils::define_short_id;
 use cairo_lang_utils::ordered_hash_map::OrderedHashMap;
 use smol_str::SmolStr;
 
-use super::attribute::{ast_attributes_to_semantic, Attribute};
 use super::generics::semantic_generic_params;
 use crate::db::SemanticGroup;
+use crate::diagnostic::SemanticDiagnosticKind::*;
 use crate::diagnostic::SemanticDiagnostics;
 use crate::expr::compute::Environment;
-use crate::resolve_path::{ResolvedLookback, Resolver};
+use crate::resolve::{ResolvedItems, Resolver};
 use crate::substitution::{GenericSubstitution, SemanticRewriter, SubstitutionRewriter};
 use crate::{
     semantic, semantic_object_for_id, GenericArgumentId, GenericParam, Mutability,
@@ -201,7 +202,7 @@ pub fn priv_trait_semantic_data(db: &dyn SemanticGroup, trait_id: TraitId) -> Ma
     let trait_ast = module_traits.get(&trait_id).to_maybe()?;
 
     // Generic params.
-    let mut resolver = Resolver::new_with_inference(db, module_file_id);
+    let mut resolver = Resolver::new(db, module_file_id);
     let generic_params = semantic_generic_params(
         db,
         &mut diagnostics,
@@ -210,7 +211,7 @@ pub fn priv_trait_semantic_data(db: &dyn SemanticGroup, trait_id: TraitId) -> Ma
         &trait_ast.generic_params(syntax_db),
     )?;
 
-    let attributes = ast_attributes_to_semantic(syntax_db, trait_ast.attributes(syntax_db));
+    let attributes = trait_ast.attributes(syntax_db).structurize(syntax_db);
     let mut function_asts = OrderedHashMap::default();
     if let ast::MaybeTraitBody::Some(body) = trait_ast.body(syntax_db) {
         for item in body.items(syntax_db).elements(syntax_db) {
@@ -228,6 +229,15 @@ pub fn priv_trait_semantic_data(db: &dyn SemanticGroup, trait_id: TraitId) -> Ma
         }
     }
 
+    // Check fully resolved.
+    if let Some((stable_ptr, inference_err)) = resolver.inference.finalize() {
+        inference_err.report(&mut diagnostics, stable_ptr);
+    }
+    let generic_params = resolver
+        .inference
+        .rewrite(generic_params)
+        .map_err(|err| err.report(&mut diagnostics, trait_ast.stable_ptr().untyped()))?;
+
     Ok(TraitData { diagnostics: diagnostics.build(), generic_params, attributes, function_asts })
 }
 
@@ -239,7 +249,7 @@ pub struct TraitFunctionData {
     signature: semantic::Signature,
     generic_params: Vec<GenericParam>,
     attributes: Vec<Attribute>,
-    resolved_lookback: Arc<ResolvedLookback>,
+    resolved_lookback: Arc<ResolvedItems>,
 }
 
 // Selectors.
@@ -275,7 +285,7 @@ pub fn trait_function_generic_params(
 pub fn trait_function_resolved_lookback(
     db: &dyn SemanticGroup,
     trait_function_id: TraitFunctionId,
-) -> Maybe<Arc<ResolvedLookback>> {
+) -> Maybe<Arc<ResolvedItems>> {
     Ok(db.priv_trait_function_data(trait_function_id)?.resolved_lookback)
 }
 
@@ -291,7 +301,7 @@ pub fn priv_trait_function_data(
     let data = db.priv_trait_semantic_data(trait_id)?;
     let function_syntax = &data.function_asts[trait_function_id];
     let declaration = function_syntax.declaration(syntax_db);
-    let mut resolver = Resolver::new_with_inference(db, module_file_id);
+    let mut resolver = Resolver::new(db, module_file_id);
     let trait_generic_params = db.trait_generic_params(trait_id)?;
     for generic_param in trait_generic_params {
         resolver.add_generic_param(generic_param);
@@ -327,15 +337,12 @@ pub fn priv_trait_function_data(
     if matches!(function_syntax.body(syntax_db), ast::MaybeTraitFunctionBody::Some(_)) {
         diagnostics.report(
             &function_syntax.body(syntax_db),
-            crate::diagnostic::SemanticDiagnosticKind::TraitFunctionWithBody {
-                trait_id,
-                function_id: trait_function_id,
-            },
+            TraitFunctionWithBody { trait_id, function_id: trait_function_id },
         );
     }
 
-    let attributes = ast_attributes_to_semantic(syntax_db, function_syntax.attributes(syntax_db));
-    let resolved_lookback = Arc::new(resolver.lookback);
+    let attributes = function_syntax.attributes(syntax_db).structurize(syntax_db);
+    let resolved_lookback = Arc::new(resolver.resolved_items);
 
     Ok(TraitFunctionData {
         diagnostics: diagnostics.build(),

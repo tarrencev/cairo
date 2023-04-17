@@ -1,5 +1,6 @@
 use self::enm::EnumType;
 use self::structure::StructType;
+use self::uint128::Uint128Type;
 use super::lib_func::SignatureSpecializationContext;
 use super::{NamedType, SpecializationError};
 use crate::ids::{ConcreteTypeId, UserTypeId};
@@ -11,7 +12,6 @@ pub mod bitwise;
 pub mod boolean;
 pub mod boxing;
 pub mod branch_align;
-pub mod builtin_cost;
 pub mod casts;
 pub mod cheatcodes;
 pub mod consts;
@@ -29,6 +29,7 @@ pub mod mem;
 pub mod non_zero;
 pub mod nullable;
 pub mod pedersen;
+pub mod poseidon;
 pub mod range_check;
 pub mod segment_arena;
 pub mod snapshot;
@@ -38,6 +39,7 @@ pub mod structure;
 pub mod try_from_felt252;
 pub mod uint;
 pub mod uint128;
+pub mod uint256;
 pub mod unconditional_jump;
 pub mod uninitialized;
 
@@ -62,6 +64,21 @@ fn get_bool_type(
             GenericArg::UserType(UserTypeId::from_string("core::bool")),
             GenericArg::Type(unit_type.clone()),
             GenericArg::Type(unit_type),
+        ],
+    )
+}
+
+/// Helper for u256 type def.
+fn get_u256_type(
+    context: &dyn SignatureSpecializationContext,
+) -> Result<ConcreteTypeId, SpecializationError> {
+    let u128_ty = context.get_concrete_type(Uint128Type::id(), &[])?;
+    context.get_concrete_type(
+        StructType::id(),
+        &[
+            GenericArg::UserType(UserTypeId::from_string("core::integer::u256")),
+            GenericArg::Type(u128_ty.clone()),
+            GenericArg::Type(u128_ty),
         ],
     )
 }

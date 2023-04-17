@@ -2,9 +2,6 @@ use cairo_lang_sierra::extensions::ap_tracking::ApTrackingConcreteLibfunc;
 use cairo_lang_sierra::extensions::array::ArrayConcreteLibfunc;
 use cairo_lang_sierra::extensions::boolean::BoolConcreteLibfunc;
 use cairo_lang_sierra::extensions::boxing::BoxConcreteLibfunc;
-use cairo_lang_sierra::extensions::builtin_cost::{
-    BuiltinCostConcreteLibfunc, BuiltinCostWithdrawGasLibfunc, CostTokenType,
-};
 use cairo_lang_sierra::extensions::casts::CastConcreteLibfunc;
 use cairo_lang_sierra::extensions::cheatcodes::CheatcodesConcreteLibFunc;
 use cairo_lang_sierra::extensions::core::CoreConcreteLibfunc;
@@ -14,16 +11,19 @@ use cairo_lang_sierra::extensions::felt252::{
     Felt252BinaryOperationConcrete, Felt252BinaryOperator, Felt252Concrete,
 };
 use cairo_lang_sierra::extensions::felt252_dict::Felt252DictConcreteLibfunc;
-use cairo_lang_sierra::extensions::gas::GasConcreteLibfunc;
+use cairo_lang_sierra::extensions::gas::{
+    BuiltinCostWithdrawGasLibfunc, CostTokenType, GasConcreteLibfunc,
+};
+use cairo_lang_sierra::extensions::is_zero::IsZeroTraits;
 use cairo_lang_sierra::extensions::mem::MemConcreteLibfunc;
 use cairo_lang_sierra::extensions::nullable::NullableConcreteLibfunc;
 use cairo_lang_sierra::extensions::pedersen::PedersenConcreteLibfunc;
+use cairo_lang_sierra::extensions::poseidon::PoseidonConcreteLibfunc;
 use cairo_lang_sierra::extensions::starknet::StarkNetConcreteLibfunc;
 use cairo_lang_sierra::extensions::structure::StructConcreteLibfunc;
-use cairo_lang_sierra::extensions::uint::{
-    IntOperator, Uint16Concrete, Uint32Concrete, Uint64Concrete, Uint8Concrete,
-};
+use cairo_lang_sierra::extensions::uint::{IntOperator, UintConcrete, UintMulTraits};
 use cairo_lang_sierra::extensions::uint128::Uint128Concrete;
+use cairo_lang_sierra::extensions::uint256::Uint256Concrete;
 use cairo_lang_sierra::ids::ConcreteTypeId;
 
 use crate::ApChange;
@@ -56,11 +56,18 @@ pub fn core_libfunc_ap_change<InfoProvider: InvocationApChangeInfoProvider>(
         CoreConcreteLibfunc::Array(libfunc) => match libfunc {
             ArrayConcreteLibfunc::New(_) => vec![ApChange::Known(1)],
             ArrayConcreteLibfunc::Append(_) => vec![ApChange::Known(0)],
-            ArrayConcreteLibfunc::PopFront(_) | ArrayConcreteLibfunc::SnapshotPopFront(_) => {
+            ArrayConcreteLibfunc::PopFront(_)
+            | ArrayConcreteLibfunc::SnapshotPopFront(_)
+            | ArrayConcreteLibfunc::SnapshotPopBack(_) => {
                 vec![ApChange::Known(1), ApChange::Known(1)]
             }
             ArrayConcreteLibfunc::Get(libfunc) => {
                 if info_provider.type_size(&libfunc.ty) == 1 { [4, 3] } else { [5, 4] }
+                    .map(ApChange::Known)
+                    .to_vec()
+            }
+            ArrayConcreteLibfunc::Slice(libfunc) => {
+                if info_provider.type_size(&libfunc.ty) == 1 { [4, 5] } else { [6, 6] }
                     .map(ApChange::Known)
                     .to_vec()
             }
@@ -75,24 +82,12 @@ pub fn core_libfunc_ap_change<InfoProvider: InvocationApChangeInfoProvider>(
             BoolConcreteLibfunc::Not(_) => vec![ApChange::Known(1)],
             BoolConcreteLibfunc::Xor(_) => vec![ApChange::Known(1)],
             BoolConcreteLibfunc::Or(_) => vec![ApChange::Known(2)],
+            BoolConcreteLibfunc::Equal(_) => vec![ApChange::Known(1), ApChange::Known(1)],
             BoolConcreteLibfunc::ToFelt252(_) => vec![ApChange::Known(0)],
         },
         CoreConcreteLibfunc::Box(libfunc) => match libfunc {
             BoxConcreteLibfunc::Into(_) => vec![ApChange::Known(1)],
             BoxConcreteLibfunc::Unbox(_) => vec![ApChange::Known(0)],
-        },
-        CoreConcreteLibfunc::BuiltinCost(libfunc) => match libfunc {
-            BuiltinCostConcreteLibfunc::BuiltinWithdrawGas(_) => {
-                let cost_computation_ap_change: usize =
-                    BuiltinCostWithdrawGasLibfunc::cost_computation_steps(|token_type| {
-                        info_provider.token_usages(token_type)
-                    });
-                vec![
-                    ApChange::Known(cost_computation_ap_change + 2),
-                    ApChange::Known(cost_computation_ap_change + 3),
-                ]
-            }
-            BuiltinCostConcreteLibfunc::GetBuiltinCosts(_) => vec![ApChange::Known(3)],
         },
         CoreConcreteLibfunc::Cast(libfunc) => match libfunc {
             CastConcreteLibfunc::Downcast(_) => vec![ApChange::Known(2), ApChange::Known(2)],
@@ -117,8 +112,8 @@ pub fn core_libfunc_ap_change<InfoProvider: InvocationApChangeInfoProvider>(
             }
             Felt252Concrete::BinaryOperation(bin_op) => {
                 let op = match bin_op {
-                    Felt252BinaryOperationConcrete::Binary(op) => op.operator,
-                    Felt252BinaryOperationConcrete::Const(op) => op.operator,
+                    Felt252BinaryOperationConcrete::WithVar(op) => op.operator,
+                    Felt252BinaryOperationConcrete::WithConst(op) => op.operator,
                 };
                 vec![ApChange::Known(if op == Felt252BinaryOperator::Div { 1 } else { 0 })]
             }
@@ -131,83 +126,22 @@ pub fn core_libfunc_ap_change<InfoProvider: InvocationApChangeInfoProvider>(
             GasConcreteLibfunc::WithdrawGas(_) => vec![ApChange::Known(2), ApChange::Known(2)],
             GasConcreteLibfunc::RedepositGas(_) => vec![ApChange::Known(0)],
             GasConcreteLibfunc::GetAvailableGas(_) => vec![ApChange::Known(0)],
+            GasConcreteLibfunc::BuiltinWithdrawGas(_) => {
+                let cost_computation_ap_change: usize =
+                    BuiltinCostWithdrawGasLibfunc::cost_computation_steps(|token_type| {
+                        info_provider.token_usages(token_type)
+                    });
+                vec![
+                    ApChange::Known(cost_computation_ap_change + 2),
+                    ApChange::Known(cost_computation_ap_change + 3),
+                ]
+            }
+            GasConcreteLibfunc::GetBuiltinCosts(_) => vec![ApChange::Known(3)],
         },
-        CoreConcreteLibfunc::Uint8(libfunc) => match libfunc {
-            Uint8Concrete::Const(_) | Uint8Concrete::ToFelt252(_) => vec![ApChange::Known(0)],
-            Uint8Concrete::Operation(libfunc) => match libfunc.operator {
-                IntOperator::OverflowingAdd => {
-                    vec![ApChange::Known(3), ApChange::Known(3)]
-                }
-                IntOperator::OverflowingSub => {
-                    vec![ApChange::Known(2), ApChange::Known(4)]
-                }
-            },
-            Uint8Concrete::LessThan(_) => vec![ApChange::Known(2), ApChange::Known(3)],
-            Uint8Concrete::SquareRoot(_) => vec![ApChange::Known(6)],
-            Uint8Concrete::Equal(_) => vec![ApChange::Known(1), ApChange::Known(1)],
-            Uint8Concrete::LessThanOrEqual(_) => vec![ApChange::Known(3), ApChange::Known(2)],
-            Uint8Concrete::FromFelt252(_) => vec![ApChange::Known(2), ApChange::Known(7)],
-            Uint8Concrete::IsZero(_) => vec![ApChange::Known(0), ApChange::Known(0)],
-            Uint8Concrete::Divmod(_) => vec![ApChange::Known(5)],
-            Uint8Concrete::WideMul(_) => vec![ApChange::Known(0)],
-        },
-        CoreConcreteLibfunc::Uint16(libfunc) => match libfunc {
-            Uint16Concrete::Const(_) | Uint16Concrete::ToFelt252(_) => vec![ApChange::Known(0)],
-            Uint16Concrete::Operation(libfunc) => match libfunc.operator {
-                IntOperator::OverflowingAdd => {
-                    vec![ApChange::Known(3), ApChange::Known(3)]
-                }
-                IntOperator::OverflowingSub => {
-                    vec![ApChange::Known(2), ApChange::Known(4)]
-                }
-            },
-            Uint16Concrete::LessThan(_) => vec![ApChange::Known(2), ApChange::Known(3)],
-            Uint16Concrete::SquareRoot(_) => vec![ApChange::Known(6)],
-            Uint16Concrete::Equal(_) => vec![ApChange::Known(1), ApChange::Known(1)],
-            Uint16Concrete::LessThanOrEqual(_) => vec![ApChange::Known(3), ApChange::Known(2)],
-            Uint16Concrete::FromFelt252(_) => vec![ApChange::Known(2), ApChange::Known(7)],
-            Uint16Concrete::IsZero(_) => vec![ApChange::Known(0), ApChange::Known(0)],
-            Uint16Concrete::Divmod(_) => vec![ApChange::Known(5)],
-            Uint16Concrete::WideMul(_) => vec![ApChange::Known(0)],
-        },
-        CoreConcreteLibfunc::Uint32(libfunc) => match libfunc {
-            Uint32Concrete::Const(_) | Uint32Concrete::ToFelt252(_) => vec![ApChange::Known(0)],
-            Uint32Concrete::Operation(libfunc) => match libfunc.operator {
-                IntOperator::OverflowingAdd => {
-                    vec![ApChange::Known(3), ApChange::Known(3)]
-                }
-                IntOperator::OverflowingSub => {
-                    vec![ApChange::Known(2), ApChange::Known(4)]
-                }
-            },
-            Uint32Concrete::LessThan(_) => vec![ApChange::Known(2), ApChange::Known(3)],
-            Uint32Concrete::SquareRoot(_) => vec![ApChange::Known(6)],
-            Uint32Concrete::Equal(_) => vec![ApChange::Known(1), ApChange::Known(1)],
-            Uint32Concrete::LessThanOrEqual(_) => vec![ApChange::Known(3), ApChange::Known(2)],
-            Uint32Concrete::FromFelt252(_) => vec![ApChange::Known(2), ApChange::Known(7)],
-            Uint32Concrete::IsZero(_) => vec![ApChange::Known(0), ApChange::Known(0)],
-            Uint32Concrete::Divmod(_) => vec![ApChange::Known(5)],
-            Uint32Concrete::WideMul(_) => vec![ApChange::Known(0)],
-        },
-        CoreConcreteLibfunc::Uint64(libfunc) => match libfunc {
-            Uint64Concrete::Const(_) | Uint64Concrete::ToFelt252(_) => vec![ApChange::Known(0)],
-            Uint64Concrete::Operation(libfunc) => match libfunc.operator {
-                IntOperator::OverflowingAdd => {
-                    vec![ApChange::Known(3), ApChange::Known(3)]
-                }
-                IntOperator::OverflowingSub => {
-                    vec![ApChange::Known(2), ApChange::Known(4)]
-                }
-            },
-            Uint64Concrete::LessThan(_) => vec![ApChange::Known(2), ApChange::Known(3)],
-            Uint64Concrete::SquareRoot(_) => vec![ApChange::Known(6)],
-            Uint64Concrete::Equal(_) => vec![ApChange::Known(1), ApChange::Known(1)],
-            Uint64Concrete::LessThanOrEqual(_) => vec![ApChange::Known(3), ApChange::Known(2)],
-            Uint64Concrete::FromFelt252(_) => vec![ApChange::Known(2), ApChange::Known(7)],
-            Uint64Concrete::IsZero(_) => vec![ApChange::Known(0), ApChange::Known(0)],
-            Uint64Concrete::Divmod(_) => vec![ApChange::Known(5)],
-            Uint64Concrete::WideMul(_) => vec![ApChange::Known(0)],
-        },
+        CoreConcreteLibfunc::Uint8(libfunc) => uint_ap_change(libfunc),
+        CoreConcreteLibfunc::Uint16(libfunc) => uint_ap_change(libfunc),
+        CoreConcreteLibfunc::Uint32(libfunc) => uint_ap_change(libfunc),
+        CoreConcreteLibfunc::Uint64(libfunc) => uint_ap_change(libfunc),
         CoreConcreteLibfunc::Uint128(libfunc) => match libfunc {
             Uint128Concrete::Operation(libfunc) => match libfunc.operator {
                 IntOperator::OverflowingAdd | IntOperator::OverflowingSub => {
@@ -225,6 +159,10 @@ pub fn core_libfunc_ap_change<InfoProvider: InvocationApChangeInfoProvider>(
                 vec![ApChange::Known(0)]
             }
             Uint128Concrete::IsZero(_) => vec![ApChange::Known(0), ApChange::Known(0)],
+        },
+        CoreConcreteLibfunc::Uint256(libfunc) => match libfunc {
+            Uint256Concrete::IsZero(_) => vec![ApChange::Known(0), ApChange::Known(0)],
+            Uint256Concrete::Divmod(_) => vec![ApChange::Known(44)],
         },
         CoreConcreteLibfunc::Mem(libfunc) => match libfunc {
             MemConcreteLibfunc::StoreTemp(libfunc) => {
@@ -262,6 +200,9 @@ pub fn core_libfunc_ap_change<InfoProvider: InvocationApChangeInfoProvider>(
         },
         CoreConcreteLibfunc::Pedersen(libfunc) => match libfunc {
             PedersenConcreteLibfunc::PedersenHash(_) => vec![ApChange::Known(0)],
+        },
+        CoreConcreteLibfunc::Poseidon(libfunc) => match libfunc {
+            PoseidonConcreteLibfunc::HadesPermutation(_) => vec![ApChange::Known(0)],
         },
         CoreConcreteLibfunc::StarkNet(libfunc) => match libfunc {
             StarkNetConcreteLibfunc::ClassHashConst(_)
@@ -326,5 +267,30 @@ pub fn core_libfunc_ap_change<InfoProvider: InvocationApChangeInfoProvider>(
         },
         CoreConcreteLibfunc::Debug(_) => vec![ApChange::Known(0)],
         CoreConcreteLibfunc::SnapshotTake(_) => vec![ApChange::Known(0)],
+    }
+}
+
+/// Returns the ap changes for u8/u16/u32/u64 libfuncs.
+fn uint_ap_change<TUintTraits: UintMulTraits + IsZeroTraits>(
+    libfunc: &UintConcrete<TUintTraits>,
+) -> Vec<ApChange> {
+    match libfunc {
+        UintConcrete::Const(_) | UintConcrete::ToFelt252(_) => vec![ApChange::Known(0)],
+        UintConcrete::Operation(libfunc) => match libfunc.operator {
+            IntOperator::OverflowingAdd => {
+                vec![ApChange::Known(3), ApChange::Known(3)]
+            }
+            IntOperator::OverflowingSub => {
+                vec![ApChange::Known(2), ApChange::Known(4)]
+            }
+        },
+        UintConcrete::LessThan(_) => vec![ApChange::Known(2), ApChange::Known(3)],
+        UintConcrete::SquareRoot(_) => vec![ApChange::Known(6)],
+        UintConcrete::Equal(_) => vec![ApChange::Known(1), ApChange::Known(1)],
+        UintConcrete::LessThanOrEqual(_) => vec![ApChange::Known(3), ApChange::Known(2)],
+        UintConcrete::FromFelt252(_) => vec![ApChange::Known(2), ApChange::Known(7)],
+        UintConcrete::IsZero(_) => vec![ApChange::Known(0), ApChange::Known(0)],
+        UintConcrete::Divmod(_) => vec![ApChange::Known(5)],
+        UintConcrete::WideMul(_) => vec![ApChange::Known(0)],
     }
 }

@@ -1,4 +1,4 @@
-use cairo_lang_sierra::extensions::builtin_cost::CostTokenType;
+use cairo_lang_sierra::extensions::gas::CostTokenType;
 use cairo_lang_sierra::ids::FunctionId;
 use cairo_lang_sierra::program::Program;
 use cairo_lang_sierra_ap_change::ap_change_info::ApChangeInfo;
@@ -12,7 +12,7 @@ use thiserror::Error;
 pub struct Metadata {
     /// AP changes information for Sierra user functions.
     pub ap_change_info: ApChangeInfo,
-    /// Gas information for validating Sierra code and taking the apporiate amount of gas.
+    /// Gas information for validating Sierra code and taking the appropriate amount of gas.
     pub gas_info: GasInfo,
 }
 
