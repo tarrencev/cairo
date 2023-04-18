@@ -3,6 +3,7 @@ use cairo_lang_sierra::extensions::array::ArrayConcreteLibfunc;
 use cairo_lang_sierra::extensions::boolean::BoolConcreteLibfunc;
 use cairo_lang_sierra::extensions::boxing::BoxConcreteLibfunc;
 use cairo_lang_sierra::extensions::casts::CastConcreteLibfunc;
+use cairo_lang_sierra::extensions::cheatcodes::CheatcodesConcreteLibFunc;
 use cairo_lang_sierra::extensions::core::CoreConcreteLibfunc;
 use cairo_lang_sierra::extensions::ec::EcConcreteLibfunc;
 use cairo_lang_sierra::extensions::enm::EnumConcreteLibfunc;
@@ -312,6 +313,29 @@ pub fn core_libfunc_ap_change<InfoProvider: InvocationApChangeInfoProvider>(
             NullableConcreteLibfunc::MatchNullable(_) => {
                 vec![ApChange::Known(0), ApChange::Known(0)]
             }
+        },
+        CoreConcreteLibfunc::Cheatcodes(libfunc) => match libfunc {
+            CheatcodesConcreteLibFunc::Declare(_) => vec![ApChange::Known(2), ApChange::Known(2)],
+            CheatcodesConcreteLibFunc::DeclareCairo0(_) => {
+                vec![ApChange::Known(2), ApChange::Known(2)]
+            }
+            CheatcodesConcreteLibFunc::Roll(_) => vec![ApChange::Known(1), ApChange::Known(1)],
+            CheatcodesConcreteLibFunc::StartPrank(_) => {
+                vec![ApChange::Known(1), ApChange::Known(1)]
+            }
+            CheatcodesConcreteLibFunc::StopPrank(_) => vec![ApChange::Known(1), ApChange::Known(1)],
+            CheatcodesConcreteLibFunc::Warp(_) => vec![ApChange::Known(1), ApChange::Known(1)],
+            CheatcodesConcreteLibFunc::Invoke(_) => vec![ApChange::Known(1), ApChange::Known(1)],
+            CheatcodesConcreteLibFunc::MockCall(_) => vec![ApChange::Known(1), ApChange::Known(1)],
+            CheatcodesConcreteLibFunc::Deploy(_) => vec![ApChange::Known(2), ApChange::Known(2)],
+            CheatcodesConcreteLibFunc::DeployCairo0(_) => {
+                vec![ApChange::Known(2), ApChange::Known(2)]
+            }
+            CheatcodesConcreteLibFunc::Prepare(_) => vec![ApChange::Known(5), ApChange::Known(5)],
+            CheatcodesConcreteLibFunc::PrepareCairo0(_) => {
+                vec![ApChange::Known(5), ApChange::Known(5)]
+            }
+            CheatcodesConcreteLibFunc::Call(_) => vec![ApChange::Known(3), ApChange::Known(3)],
         },
         CoreConcreteLibfunc::Debug(_) => vec![ApChange::Known(0)],
         CoreConcreteLibfunc::SnapshotTake(_) => vec![ApChange::Known(0)],
