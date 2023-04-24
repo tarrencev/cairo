@@ -16,13 +16,14 @@ use cairo_lang_utils::bigint::{deserialize_big_uint, serialize_big_uint, BigUint
 use itertools::{chain, Itertools};
 use num_bigint::BigUint;
 use serde::{Deserialize, Serialize};
+use starknet_crypto::{poseidon_hash_many, FieldElement, PoseidonHasher};
 use thiserror::Error;
 
 use crate::abi::{AbiBuilder, Contract};
 use crate::allowed_libfuncs::AllowedLibfuncsError;
 use crate::contract::{
     find_contracts, get_abi, get_module_functions, get_selector_and_sierra_function,
-    ContractDeclaration,
+    starknet_keccak, ContractDeclaration,
 };
 use crate::db::StarknetRootDatabaseBuilderEx;
 use crate::felt252_serde::sierra_to_felt252s;
@@ -32,6 +33,22 @@ use crate::sierra_version::{self};
 #[cfg(test)]
 #[path = "contract_class_test.rs"]
 mod test;
+
+/// Cairo string for "CONTRACT_CLASS_V0.1.0"
+const PREFIX_CONTRACT_CLASS_V0_1_0: FieldElement = FieldElement::from_mont([
+    5800711240972404213,
+    15539482671244488427,
+    18446734822722598327,
+    37302452645455172,
+]);
+
+// 2 ** 251 - 256
+const ADDR_BOUND: FieldElement = FieldElement::from_mont([
+    18446743986131443745,
+    160989183,
+    18446744073709255680,
+    576459263475590224,
+]);
 
 #[derive(Error, Debug, Eq, PartialEq)]
 pub enum StarknetCompilationError {
@@ -49,6 +66,51 @@ pub struct ContractClass {
     pub contract_class_version: String,
     pub entry_points_by_type: ContractEntryPoints,
     pub abi: Option<Contract>,
+}
+
+impl ContractClass {
+    pub fn class_hash(&self) -> BigUintAsHex {
+        let mut hasher = PoseidonHasher::new();
+        hasher.update(PREFIX_CONTRACT_CLASS_V0_1_0);
+
+        // Hashes entry points
+        hasher.update(hash_sierra_entrypoints(&self.entry_points_by_type.external));
+        hasher.update(hash_sierra_entrypoints(&self.entry_points_by_type.l1_handler));
+        hasher.update(hash_sierra_entrypoints(&self.entry_points_by_type.constructor));
+
+        // Hashes ABI
+        hasher.update(
+            FieldElement::from_hex_be(
+                starknet_keccak(self.abi.clone().unwrap().json().as_bytes())
+                    .to_str_radix(16)
+                    .as_str(),
+            )
+            .unwrap(),
+        );
+
+        // Hashes Sierra program
+        hasher.update(poseidon_hash_many(
+            &self
+                .sierra_program
+                .iter()
+                .map(|x| FieldElement::from_hex_be(x.value.to_str_radix(16).as_str()).unwrap())
+                .collect_vec(),
+        ));
+
+        let normalized = hasher.finalize() % ADDR_BOUND;
+        BigUintAsHex { value: BigUint::from_bytes_be(&normalized.to_bytes_be()) }
+    }
+}
+
+fn hash_sierra_entrypoints(entrypoints: &[ContractEntryPoint]) -> FieldElement {
+    let mut hasher = PoseidonHasher::new();
+
+    for entry in entrypoints.iter() {
+        hasher.update(FieldElement::from_hex_be(entry.selector.to_str_radix(16).as_str()).unwrap());
+        hasher.update(entry.function_idx.into());
+    }
+
+    hasher.finalize()
 }
 
 const DEFAULT_CONTRACT_CLASS_VERSION: &str = "0.1.0";

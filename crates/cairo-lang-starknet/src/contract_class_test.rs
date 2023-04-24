@@ -61,6 +61,7 @@ fn test_serialization() {
 fn test_full_contract_deserialization(example_file_name: &str) {
     let contract = get_test_contract(format!("{example_file_name}.cairo").as_str());
     let serialized = serde_json::to_string_pretty(&contract).unwrap();
+    println!("Deserialization of {} {} succeeded.", example_file_name, contract.class_hash().value.to_str_radix(16));
     assert_eq!(contract, serde_json::from_str(&serialized).unwrap())
 }
 

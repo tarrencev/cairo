@@ -783,6 +783,7 @@ dependencies = [
  "serde_json",
  "sha3",
  "smol_str",
+ "starknet-crypto",
  "test-case",
  "test-log",
  "thiserror",
@@ -2585,9 +2586,9 @@ dependencies = [
 
 [[package]]
 name = "starknet-crypto"
-version = "0.4.2"
+version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d49eb65d58fa98a164ad2cd4d04775885386b83bdad6060f168a38ede77c9aed"
+checksum = "8802a516a2556b2ddb9630898d2c8387d928a3e603799b8b2a7dc4018b852c8f"
 dependencies = [
  "crypto-bigint",
  "hex",
