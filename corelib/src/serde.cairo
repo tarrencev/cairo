@@ -97,11 +97,22 @@ impl OptionSerde<T, impl TSerde: Serde<T>, impl TDrop: Drop<T>> of Serde<Option<
     }
 }
 
+impl SpanSerde<T, impl TSerde: Serde<T>, impl TCopy: Copy<T>, impl TDrop: Drop<T>> of Serde::<Span<T>> {
+    fn serialize(ref output: Array<felt252>, mut input: Span<T>) {
+        Serde::<usize>::serialize(ref output, input.len());
+        serialize_span_helper(ref output, input);
+    }
+    fn deserialize(ref serialized: Span<felt252>) -> Option<Span<T>> {
+        let length = *serialized.pop_front()?;
+        let mut arr = ArrayTrait::new();
+        Option::Some(deserialize_array_helper(ref serialized, arr, length)?.span())
+    }
+}
 
-impl ArraySerde<T, impl TSerde: Serde<T>, impl TDrop: Drop<T>> of Serde<Array<T>> {
+impl ArraySerde<T, impl TSerde: Serde<T>, impl TCopy: Copy<T>, impl TDrop: Drop<T>> of Serde<Array<T>> {
     fn serialize(ref output: Array<felt252>, mut input: Array<T>) {
         Serde::<usize>::serialize(ref output, input.len());
-        serialize_array_helper(ref output, input);
+        serialize_span_helper(ref output, input.span());
     }
     fn deserialize(ref serialized: Span<felt252>) -> Option<Array<T>> {
         let length = *serialized.pop_front()?;
@@ -110,13 +121,14 @@ impl ArraySerde<T, impl TSerde: Serde<T>, impl TDrop: Drop<T>> of Serde<Array<T>
     }
 }
 
-fn serialize_array_helper<T, impl TSerde: Serde<T>, impl TDrop: Drop<T>>(
-    ref output: Array<felt252>, mut input: Array<T>
+fn serialize_span_helper<T, impl TSerde: Serde<T>, impl TCopy: Copy<T>, impl TDrop: Drop<T>>(
+    ref output: Array<felt252>, mut input: Span<T>
 ) {
     match input.pop_front() {
         Option::Some(value) => {
+            let value = *value;
             TSerde::serialize(ref output, value);
-            serialize_array_helper(ref output, input);
+            serialize_span_helper(ref output, input);
         },
         Option::None(_) => {},
     }
